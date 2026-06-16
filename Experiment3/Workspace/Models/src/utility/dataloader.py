@@ -2,7 +2,6 @@
 Data loader for eHMI recommendation system with heterogeneous multi-relational interactions.
 """
 
-import os
 import pickle
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -394,48 +393,3 @@ def load_processed_data(data_dir: str) -> Tuple[Dict[str, Any], Dict[str, Any], 
 
     return train_data, test_data, metadata
 
-
-if __name__ == "__main__":
-    # Test data loader
-    print("Testing eHMI Dataset...")
-
-    # Test with sample data path (adjust path as needed)
-    data_path = "../data/database.xlsx"
-
-    if os.path.exists(data_path):
-        try:
-            # Test original dataset creation
-            dataset = eHMIDataset(
-                data_path=data_path,
-                interaction_types=[
-                    "RATING",
-                    "BFI_PERCEPTION",
-                ],
-                test_size=0.2,
-                normalize_interactions=True,
-            )
-
-            # Get data
-            train_data = dataset.get_train_data()
-            test_data = dataset.get_test_data()
-
-            print("✓ Original Dataset created successfully")
-            print(f"  - Users: {train_data['n_users']}")
-            print(f"  - Items: {train_data['n_items']}")
-            print(f"  - User features shape: {train_data['user_features'].shape}")
-            print(f"  - Item features shape: {train_data['item_features'].shape}")
-            print(f"  - Interactions: {list(train_data['interactions'].keys())}")
-            print(f"  - Adjacency matrices: {list(train_data['adj_matrices'].keys())}")
-
-            # Test saving and loading
-            dataset.save_processed_data("./test_data")
-            loaded_train, loaded_test, metadata = load_processed_data("./test_data")
-
-            print("✓ Original data saving and loading works")
-        except Exception as e:
-            print(f"Error testing with real data: {e}")
-            print("This is expected if database.xlsx is not available")
-    else:
-        print("database.xlsx not found, skipping real data test")
-
-    print("✓ Data loader module ready")

@@ -1018,39 +1018,3 @@ class CausalModel:
 
         print("")
 
-
-def main():
-    """Main function to run causal analysis."""
-    config_path = "./src/configs/causal_config.yaml"
-
-    # Initialize and run causal model
-    causal_model = CausalModel(config_path)
-    causal_model.run_complete_analysis()
-
-    # Print comprehensive model information including system of equations
-    causal_model.print_model_info()
-
-    # You can also call the system of equations printing separately
-    print("\n" + "=" * 60)
-    print("SEPARATE SYSTEM OF EQUATIONS CALLS:")
-    causal_model.print_system_of_equations(use_robust=False)
-
-    if hasattr(causal_model, "robust_adjacency_matrix"):
-        causal_model.print_system_of_equations(use_robust=True)
-
-    # Example inference
-    if causal_model.config["inference"]["enable_inference"]:
-        example_input = {
-            "Difference BFI-TIPI O": 0.5,
-            "Difference BFI-TIPI C": -0.2,
-            "Difference BFI-TIPI E": 0.1,
-            "Difference BFI-TIPI A": 0.3,
-            "Difference BFI-TIPI N": -0.1,
-        }
-
-        predictions = causal_model.predict(example_input)
-        logger.info(f"Example prediction: {predictions}")
-
-
-if __name__ == "__main__":
-    main()

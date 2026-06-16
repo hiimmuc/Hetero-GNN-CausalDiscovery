@@ -21,7 +21,7 @@ from models.GHCF_Causal import GHCF_Causal
 from models.GHCF_Refine import GHCF_Refine
 from utility.batch_processing import BatchProcessor
 from utility.dataloader import load_processed_data
-from utility.helper import set_seed
+from utility.helper import resolve_causal_paths, set_seed
 
 
 class Evaluator:
@@ -182,19 +182,7 @@ class Evaluator:
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
     def _setup_causal_paths(self) -> Tuple[str, str]:
-        """Validate and return causal model paths from arguments."""
-        causal_model_path = self.args.causal_path
-        causal_config_path = self.args.causal_config
-
-        if not Path(causal_model_path).exists():
-            raise FileNotFoundError(f"Causal model file not found: {causal_model_path}")
-        if not Path(causal_config_path).exists():
-            raise FileNotFoundError(f"Causal config file not found: {causal_config_path}")
-
-        print(f"Causal mode enabled. Model path: {causal_model_path}")
-        print(f"Causal config path: {causal_config_path}")
-
-        return causal_model_path, causal_config_path
+        return resolve_causal_paths(self.args.causal_path, self.args.causal_config)
 
     def evaluate_recommendations(
         self,

@@ -2,7 +2,6 @@
 Configuration settings for the model, training, and evaluation
 """
 
-import os
 from pathlib import Path
 
 import torch
@@ -10,16 +9,7 @@ import torch
 # Directory paths
 BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
-OUTPUT_DIR = BASE_DIR / "output"
-MODEL_OUTPUT_DIR = OUTPUT_DIR / "models"
-FIGURES_DIR = OUTPUT_DIR / "figures" / "prediction"
-GRAPH_FIGURES_DIR = OUTPUT_DIR / "figures" / "graph"
 DATA_INTERACTIONS_DIR = DATA_DIR / "interactions"
-
-# Ensure output directories exist
-os.makedirs(MODEL_OUTPUT_DIR, exist_ok=True)
-os.makedirs(FIGURES_DIR, exist_ok=True)
-os.makedirs(GRAPH_FIGURES_DIR, exist_ok=True)
 
 # Data settings
 DATABASE_PATH = DATA_DIR / "database.xlsx"
@@ -89,7 +79,6 @@ INTERACTION_TYPES = {
 # Dataset is small (30 users × 50 items = 900 rows) so keep the model compact
 # to avoid overfitting: single GNN layer, 32-dim embeddings, strong dropout.
 GRAPH_CONFIG = {
-    # "n_relations": len(INTERACTION_TYPES),  # implicitly defined by interaction types
     "embedding_dim": 32,  # 64 → 32; 80 nodes × 32 dims is already expressive
     "layer_sizes": [32],  # two 64-layers → single 32-layer (less capacity, less overfit)
     "dropout_rates": [0.4],  # 0.1 → 0.4; stronger regularization for small data

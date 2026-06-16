@@ -3,6 +3,7 @@ Helper functions for data processing and utilities.
 """
 
 import random
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import numpy as np
@@ -205,7 +206,6 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx: sp.csr_matrix) -> torch.sparse.F
     indices = torch.from_numpy(np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
     values = torch.from_numpy(sparse_mx.data)
     shape = torch.Size(sparse_mx.shape)
-    # return torch.sparse.FloatTensor(indices, values, shape)
     return torch.sparse_coo_tensor(indices, values, shape, dtype=torch.float)
 
 
@@ -235,36 +235,17 @@ def encode_categorical_features(
     return data_encoded, encoding_maps
 
 
-if __name__ == "__main__":
-    # Test helper functions
-    print("Testing helper functions...")
+def resolve_causal_paths(causal_model_path: str, causal_config_path: str) -> Tuple[str, str]:
+    """Validate causal model paths and return them.
 
-    # Test seed setting
-    set_seed(42)
-    print("✓ Seed setting")
+    Raises FileNotFoundError if either path does not exist.
+    """
+    if not Path(causal_model_path).exists():
+        raise FileNotFoundError(f"Causal model file not found: {causal_model_path}")
+    if not Path(causal_config_path).exists():
+        raise FileNotFoundError(f"Causal config file not found: {causal_config_path}")
 
-    # Test feature normalization
-    features = np.random.randn(100, 5)
-    normalized = normalize(features, "minmax")
-    assert normalized.min() >= 0 and normalized.max() <= 1, "MinMax normalization failed"
-    print("✓ Feature normalization")
+    print(f"Causal mode enabled. Model path: {causal_model_path}")
+    print(f"Causal config path: {causal_config_path}")
 
-    # Test advanced feature normalization with mixed strategy
-    feature_names = [f"feature_{i}" for i in range(5)]
-    tipi_features = [f"TIPI-{ch}" for ch in "OCEAN"]
-    bfi_features = [f"BFI-{ch}" for ch in "OCEAN"]
-    all_feature_names = tipi_features + bfi_features + ["MOS-X2", "SQ", "Rating"]
-    features_mixed = np.random.randn(100, len(all_feature_names))
-    normalized_mixed = normalize_features(features_mixed, all_feature_names, "mixed")
-    assert (
-        normalized_mixed.min() >= 0 and normalized_mixed.max() <= 1
-    ), "Mixed normalization failed"
-    print("✓ Advanced feature normalization (mixed strategy)")
-
-    # Test adjacency matrix creation
-    interactions = np.array([[0, 0, 5], [0, 1, 3], [1, 0, 4]])
-    adj_mat = create_adjacency_matrix(interactions, 2, 2, "norm")
-    assert adj_mat.shape == (4, 4), "Adjacency matrix shape incorrect"
-    print("✓ Adjacency matrix creation")
-
-    print("All tests passed!")
+    return causal_model_path, causal_config_path

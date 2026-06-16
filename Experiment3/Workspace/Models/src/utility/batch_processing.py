@@ -64,8 +64,6 @@ class BatchProcessor:
             # interaction_data shape: [n_interactions, 2 + n_values]
             # where first 2 columns are user_idx, item_idx, and rest are values
             n_interactions = len(interaction_data)
-            # n_value_dims = interaction_data.shape[1] - 2  # Subtract user_idx and item_idx columns
-
             for i in range(n_interactions):
                 interaction_row = interaction_data[i]
                 user_idx = int(interaction_row[0])
@@ -232,26 +230,3 @@ class BatchProcessor:
                 key: np.mean([m[key] for m in all_metrics]) for key in all_metrics[0].keys()
             }
         return {f"precision@{k}": 0.0 for k in k_values}
-
-if __name__ == "__main__":
-    # Test batch processor
-    print("Testing BatchProcessor...")
-
-    # Create sample data
-    n_users, n_items = 100, 50
-
-    # Sample interactions
-    sample_interactions = {
-        "RATING": np.array(
-            [[0, 0, 5.0], [0, 1, 3.0], [1, 0, 4.0], [1, 2, 2.0], [2, 1, 5.0], [2, 3, 4.0]]
-        )
-    }
-
-    # Test batch processor
-    processor = BatchProcessor(n_users, n_items, batch_size=4)
-
-    # Test batch creation
-    batches = processor.create_training_batches(sample_interactions)
-    print(f"✓ Created {len(batches)} training batches")
-
-    print("✓ BatchProcessor tests passed!")

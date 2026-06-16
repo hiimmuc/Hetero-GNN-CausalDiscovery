@@ -6,12 +6,10 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 from configs.config import (
-    CAUSAL_CONFIG_PATH,
-    CAUSAL_MODEL_PATH,
     EVAL_INTERVAL,
     NUM_EPOCHS,
     RANDOM_SEED,
@@ -133,8 +131,7 @@ class CrossValidationTrainer:
     def setup_cv_directory(self) -> None:
         """Setup cross-validation output directory."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        interactions_str = "_".join(sorted(self.args.interactions))
-        self.cv_dir = Path(f"checkpoints/cv_{interactions_str}_{timestamp}")
+        self.cv_dir = Path(f"checkpoints/cv_{timestamp}")
         self.cv_dir.mkdir(parents=True, exist_ok=True)
 
         # Save CV configuration
@@ -216,7 +213,10 @@ class CrossValidationTrainer:
             Dict mapping interaction_type → list of sparse torch tensors
             (one per interaction component).
         """
-        from utility.helper import create_adjacency_matrix, sparse_mx_to_torch_sparse_tensor
+        from utility.helper import (
+            create_adjacency_matrix,
+            sparse_mx_to_torch_sparse_tensor,
+        )
 
         adj_matrices: Dict = {}
         for interaction_type, interaction_list in interactions.items():
@@ -541,7 +541,8 @@ class FoldTrainer(Trainer):
         training_time = time.time() - training_start_time
         final_metrics = self.evaluate_model(self.k_values)
 
-        # Save results
+        # Save plots and results (mirrors Trainer.run())
+        self.save_plots()
         self.save_results(training_time, final_metrics)
         self.writer.close()
 

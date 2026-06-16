@@ -158,37 +158,3 @@ def calculate_ranking_metrics(
     metrics["auc"] = auc(y_true, y_pred)
 
     return metrics
-
-
-if __name__ == "__main__":
-    # Test metrics
-    print("Testing evaluation metrics...")
-
-    # Example data
-    y_true = [1, 0, 1, 0, 1, 0, 0, 1, 0, 0]
-    y_pred = [0.9, 0.1, 0.8, 0.2, 0.7, 0.3, 0.4, 0.6, 0.5, 0.05]
-
-    # Test individual metrics
-    k = 5
-    sorted_indices = np.argsort(y_pred)[::-1]
-    sorted_labels = [y_true[i] for i in sorted_indices]
-
-    prec = precision_at_k(sorted_labels, k)
-    rec = recall_at_k(sorted_labels, k, sum(y_true))
-    ndcg = ndcg_at_k(sorted_labels, k)
-    hit = hit_at_k(sorted_labels, k)
-    auc_score = auc(y_true, y_pred)
-
-    print(f"Precision@{k}: {prec:.4f}")
-    print(f"Recall@{k}: {rec:.4f}")
-    print(f"NDCG@{k}: {ndcg:.4f}")
-    print(f"Hit@{k}: {hit:.4f}")
-    print(f"AUC: {auc_score:.4f}")
-
-    # Test comprehensive metrics
-    metrics = calculate_ranking_metrics(y_true, y_pred, [5, 10])
-    print("\nComprehensive metrics:")
-    for metric, value in metrics.items():
-        print(f"{metric}: {value:.4f}")
-
-    print("✓ All metrics tests passed!")

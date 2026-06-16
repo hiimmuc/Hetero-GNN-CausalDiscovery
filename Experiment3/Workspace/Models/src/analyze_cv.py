@@ -6,9 +6,6 @@ import argparse
 import json
 from pathlib import Path
 
-import numpy as np
-
-
 def load_cv_results(cv_dir: str):
     """Load cross-validation results."""
     cv_path = Path(cv_dir)
@@ -23,6 +20,7 @@ def plot_cv_metrics(results, save_dir: Path):
     """Plot cross-validation metrics."""
     try:
         import matplotlib.pyplot as plt
+        import numpy as np
 
         fold_results = results["fold_results"]
         n_folds = len(fold_results)

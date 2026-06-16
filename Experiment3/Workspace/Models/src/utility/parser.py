@@ -209,10 +209,3 @@ def parse_args() -> argparse.Namespace:
     add_evaluation_arguments(eval_parser)
 
     return parser.parse_args()
-
-
-if __name__ == "__main__":
-    args = parse_args()
-    print("Parsed arguments:")
-    for arg, value in vars(args).items():
-        print(f"  {arg}: {value}")
