@@ -1,0 +1,70 @@
+# Causal Model Configuration
+data:
+    input_file: "./data/database_similarity.xlsx"
+    output_dir: "./causal_outputs/"
+
+preprocessing:
+    # Recompute the "Difference BFI-TIPI <trait>" inputs from raw BFI/TIPI
+    # columns scaled to a common [0, 1] range (MinMax) before differencing.
+    # This keeps the causal model on the same input scale as the GNN SEMHead,
+    # which differences a [0, 1] BFI prediction against [0, 1] TIPI features.
+    rescale_bfi_tipi_difference: true
+    bfi_scale: [1, 10] # BFI questionnaire range
+    tipi_scale: [1, 14] # TIPI questionnaire range
+
+features:
+    # Define input features (exogenous variables)
+    input_features:
+        - "Difference BFI-TIPI O"
+        - "Difference BFI-TIPI C"
+        - "Difference BFI-TIPI E"
+        - "Difference BFI-TIPI A"
+        - "Difference BFI-TIPI N"
+
+    # Define intermediate features
+    intermediate_features:
+        - "MOS-X2 Q1"
+        - "MOS-X2 Q2"
+        - "MOS-X2 Q3"
+        - "MOS-X2 Q4"
+        - "SQ1"
+        - "SQ2"
+        - "SQ3"
+        - "SQ4"
+        - "SQ5"
+
+    # Define output features (sink variables)
+    output_features:
+        - "Rating score"
+
+model:
+    name: "lingam_causal_model"
+    algorithm: "DirectLiNGAM" # Options: DirectLiNGAM, ICALiNGAM
+    random_seed: 42
+    normalize_data: true
+
+    # Bootstrap parameters
+    bootstrap:
+        n_sampling: 5000
+        min_causal_effect: 0.1
+        prob_lower_limit: 0.3
+        n_jobs: -1 # Parallel workers for bootstrap (-1 = all cores, 1 = serial)
+
+    # Prior knowledge configuration
+    prior_knowledge:
+        use_prior: true
+        # Will be automatically configured based on feature groups
+
+visualization:
+    save_graphs: true
+    formats: ["pdf", "png"]
+    lower_limit: 1e-9
+
+evaluation:
+    save_matrices: true
+    save_effects: true
+    matrix_format: "npy" # Options: npy, csv
+
+inference:
+    model_path: "./causal_outputs_wo_norm/models/causal_model.npy"
+    enable_inference: true

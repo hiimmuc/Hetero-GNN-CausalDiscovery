@@ -1,0 +1,39 @@
+GradNorm Weight Statistics
+==============================
+
+RATING:
+  Initial weight: 1.0000
+  Final weight: 1.0000
+  Mean weight: 1.0000
+  Std weight: 0.0000
+  Min weight: 1.0000
+  Max weight: 1.0000
+  Weight change: 0.0000
+
+BFI_PERCEPTION:
+  Initial weight: 0.8000
+  Final weight: 0.8000
+  Mean weight: 0.8000
+  Std weight: 0.0000
+  Min weight: 0.8000
+  Max weight: 0.8000
+  Weight change: 0.0000
+
+VOICE_QUALITY:
+  Initial weight: 0.7000
+  Final weight: 0.7000
+  Mean weight: 0.7000
+  Std weight: 0.0000
+  Min weight: 0.7000
+  Max weight: 0.7000
+  Weight change: 0.0000
+
+SUBJECTIVE_FEELING:
+  Initial weight: 0.6000
+  Final weight: 0.6000
+  Mean weight: 0.6000
+  Std weight: 0.0000
+  Min weight: 0.6000
+  Max weight: 0.6000
+  Weight change: 0.0000
+

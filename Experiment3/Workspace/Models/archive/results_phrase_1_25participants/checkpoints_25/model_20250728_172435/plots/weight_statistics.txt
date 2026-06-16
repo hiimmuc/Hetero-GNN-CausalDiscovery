@@ -1,0 +1,21 @@
+GradNorm Weight Statistics
+==============================
+
+RATING:
+  Initial weight: 1.7285
+  Final weight: 0.0982
+  Mean weight: 0.1030
+  Std weight: 0.0737
+  Min weight: 0.0977
+  Max weight: 1.7285
+  Weight change: -1.6303
+
+BFI_PERCEPTION:
+  Initial weight: 0.2715
+  Final weight: 1.9018
+  Mean weight: 1.8970
+  Std weight: 0.0737
+  Min weight: 0.2715
+  Max weight: 1.9023
+  Weight change: 1.6303
+
