@@ -2,7 +2,7 @@
 Heterogeneous Graph Neural Network components for multi-relational recommendation.
 """
 
-from typing import List
+from typing import List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -40,21 +40,34 @@ class HeteroGCNLayer(nn.Module):
         # Relation attention weights
         self.relation_attention = nn.Parameter(torch.ones(n_relations))
 
+        # GHCF-style per-layer relation transform (W_rel): refines the relation
+        # embeddings as they propagate through layers (shared across relations).
+        self.relation_layer_transform = nn.Linear(in_dim, out_dim, bias=False)
+
         self.dropout = nn.Dropout(dropout)
-        self.activation = nn.ReLU()
+        self.activation = nn.LeakyReLU(0.2)  # GHCF uses leaky_relu in propagation
 
     def forward(
-        self, x: torch.Tensor, adj_matrices: List[torch.sparse.FloatTensor]
-    ) -> torch.Tensor:
+        self,
+        x: torch.Tensor,
+        adj_matrices: List[torch.sparse.FloatTensor],
+        relation_embeddings: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Forward pass through HeteroGCN layer.
 
         Args:
             x: Node features [n_nodes, in_dim]
             adj_matrices: List of adjacency matrices for each relation
+            relation_embeddings: Per-relation embeddings [n_relations, in_dim].
+                When provided, neighbor messages for relation i are modulated
+                element-wise by relation_embeddings[i] (GHCF: (A@E) ⊙ r) before
+                the relation transform.
 
         Returns:
-            Updated node features [n_nodes, out_dim]
+            Tuple of (updated node features [n_nodes, out_dim],
+            relation embeddings propagated to the next layer [n_relations,
+            out_dim] or None if no relation embeddings were given)
         """
         # Self-loop features
         self_features = self.self_transform(x)
@@ -66,6 +79,11 @@ class HeteroGCNLayer(nn.Module):
             if adj_matrix is not None:
                 # Message passing for this relation
                 neighbor_features = torch.sparse.mm(adj_matrix, x)
+
+                # GHCF: modulate neighbor messages by the relation embedding
+                if relation_embeddings is not None:
+                    neighbor_features = neighbor_features * relation_embeddings[i].unsqueeze(0)
+
                 transformed_features = self.relation_transforms[i](neighbor_features)
 
                 # Apply relation attention
@@ -84,7 +102,14 @@ class HeteroGCNLayer(nn.Module):
         output = self_features + aggregated_features
         output = self.dropout(self.activation(output))
 
-        return output
+        # Propagate relation embeddings to the next layer (GHCF: r <- r @ W_rel)
+        new_relation_embeddings = (
+            self.relation_layer_transform(relation_embeddings)
+            if relation_embeddings is not None
+            else None
+        )
+
+        return output, new_relation_embeddings
 
 
 class HeteroGraphSAGELayer(nn.Module):
@@ -122,17 +147,23 @@ class HeteroGraphSAGELayer(nn.Module):
         self.activation = nn.ReLU()
 
     def forward(
-        self, x: torch.Tensor, adj_matrices: List[torch.sparse.FloatTensor]
-    ) -> torch.Tensor:
+        self,
+        x: torch.Tensor,
+        adj_matrices: List[torch.sparse.FloatTensor],
+        relation_embeddings: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Forward pass through HeteroGraphSAGE layer.
 
         Args:
             x: Node features [n_nodes, in_dim]
             adj_matrices: List of adjacency matrices for each relation
+            relation_embeddings: Per-relation embeddings, passed through
+                unchanged (this non-GHCF variant does not modulate by them).
 
         Returns:
-            Updated node features [n_nodes, out_dim]
+            Tuple of (updated node features [n_nodes, out_dim],
+            relation_embeddings unchanged)
         """
         # Self features
         self_features = self.self_transform(x)
@@ -160,7 +191,7 @@ class HeteroGraphSAGELayer(nn.Module):
         output = self.combine_transform(combined_features)
         output = self.dropout(self.activation(output))
 
-        return output
+        return output, relation_embeddings
 
 
 class HeteroGATLayer(nn.Module):
@@ -221,17 +252,23 @@ class HeteroGATLayer(nn.Module):
         self.activation = nn.ReLU()
 
     def forward(
-        self, x: torch.Tensor, adj_matrices: List[torch.sparse.FloatTensor]
-    ) -> torch.Tensor:
+        self,
+        x: torch.Tensor,
+        adj_matrices: List[torch.sparse.FloatTensor],
+        relation_embeddings: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """
         Forward pass through HeteroGAT layer.
 
         Args:
             x: Node features [n_nodes, in_dim]
             adj_matrices: List of adjacency matrices for each relation
+            relation_embeddings: Per-relation embeddings, passed through
+                unchanged (this non-GHCF variant does not modulate by them).
 
         Returns:
-            Updated node features [n_nodes, out_dim]
+            Tuple of (updated node features [n_nodes, out_dim],
+            relation_embeddings unchanged)
         """
         n_nodes = x.size(0)
         self_features = self.self_transform(x)
@@ -295,7 +332,7 @@ class HeteroGATLayer(nn.Module):
         output = self_features + aggregated_output
         output = self.dropout(self.activation(output))
 
-        return output
+        return output, relation_embeddings
 
 
 class MultiRelationEmbedding(nn.Module):

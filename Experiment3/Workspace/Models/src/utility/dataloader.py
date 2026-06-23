@@ -4,7 +4,7 @@ Data loader for eHMI recommendation system with heterogeneous multi-relational i
 
 import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -40,6 +40,7 @@ class eHMIDataset(Dataset):
         adj_type: str = "norm",
         normalize_interactions: bool = True,
         random_state: int = 42,
+        interaction_norm_stats: Optional[pd.DataFrame] = None,
     ):
         """
         Initialize eHMI dataset.
@@ -51,6 +52,12 @@ class eHMIDataset(Dataset):
             adj_type: Type of adjacency matrix normalization
             normalize_interactions: Whether to normalize interaction values
             random_state: Random seed for reproducibility
+            interaction_norm_stats: Optional DataFrame with columns
+                [feature, mean, std] (the causal model's normalization stats).
+                When provided, RATING / VOICE_QUALITY / SUBJECTIVE_FEELING
+                targets are z-scored with these shared stats so they live in
+                the SEM head's output space. Falls back to per-split z-score
+                for any interaction whose columns are missing from the stats.
         """
         self.data_path = Path(data_path)
         self.interaction_types = interaction_types
@@ -58,6 +65,15 @@ class eHMIDataset(Dataset):
         self.adj_type = adj_type
         self.normalize_interactions = normalize_interactions
         self.random_state = random_state
+
+        # Build a {feature_name: (mean, std)} lookup from the shared causal
+        # normalization stats, if provided.
+        self._interaction_stats_lookup: Optional[Dict[str, Tuple[float, float]]] = None
+        if interaction_norm_stats is not None:
+            self._interaction_stats_lookup = {
+                str(row["feature"]): (float(row["mean"]), float(row["std"]))
+                for _, row in interaction_norm_stats.iterrows()
+            }
 
         # Load and process data
         self._load_and_process_data()
@@ -230,6 +246,36 @@ class eHMIDataset(Dataset):
         print(f"User feature shape: {self.user_features.shape}")
         print(f"Item feature shape: {self.item_features.shape}")
 
+    def _zscore_interaction(
+        self, interaction_values: np.ndarray, columns: List[str], interaction_type: str
+    ) -> Tuple[np.ndarray, str]:
+        """Z-score interaction targets.
+
+        Uses the shared causal normalization stats (per-column mean/std) when
+        all of this interaction's columns are present, so the targets match the
+        SEM head's output space exactly (single source of truth). The stored
+        std is used directly (no epsilon) to reproduce the causal model's
+        ``(x - mean) / std`` normalization. Falls back to per-split z-scoring
+        when stats are unavailable.
+        """
+        lookup = self._interaction_stats_lookup
+        if lookup is not None and all(col in lookup for col in columns):
+            mean_vals = np.array([lookup[col][0] for col in columns])
+            std_vals = np.array([lookup[col][1] for col in columns])
+            normalized = (interaction_values - mean_vals) / std_vals
+            return normalized, "Z-Score (shared causal stats)"
+
+        if lookup is not None:
+            missing = [c for c in columns if c not in lookup]
+            print(
+                f"  WARNING: causal stats missing for {missing}; "
+                f"falling back to per-split z-score for {interaction_type}"
+            )
+        mean_vals = np.mean(interaction_values, axis=0)
+        std_vals = np.std(interaction_values, axis=0)
+        normalized = (interaction_values - mean_vals) / (std_vals + 1e-8)
+        return normalized, "Z-Score (per-split)"
+
     def _process_interactions_for_split(
         self, df: pd.DataFrame, split_name: str, create_adj_matrices: bool = True
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, List]]:
@@ -284,15 +330,13 @@ class eHMIDataset(Dataset):
                     normalized_values = (interaction_values - min_val) / (max_val - min_val)
                     norm_method = f"MinMax with BFI scale [{min_val}, {max_val}]"
                 elif interaction_type in ["VOICE_QUALITY", "SUBJECTIVE_FEELING", "RATING"]:
-                    mean_vals = np.mean(interaction_values, axis=0)
-                    std_vals = np.std(interaction_values, axis=0)
-                    normalized_values = (interaction_values - mean_vals) / (std_vals + 1e-8)
-                    norm_method = "Z-Score"
+                    normalized_values, norm_method = self._zscore_interaction(
+                        interaction_values, columns, interaction_type
+                    )
                 else:
-                    mean_vals = np.mean(interaction_values, axis=0)
-                    std_vals = np.std(interaction_values, axis=0)
-                    normalized_values = (interaction_values - mean_vals) / (std_vals + 1e-8)
-                    norm_method = "Z-Score (default)"
+                    normalized_values, norm_method = self._zscore_interaction(
+                        interaction_values, columns, interaction_type
+                    )
 
                 interactions_array[:, 2:] = normalized_values
                 print(f"Normalized {split_name} {interaction_type} using {norm_method}")

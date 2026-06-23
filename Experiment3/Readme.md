@@ -8,12 +8,9 @@ Experiment3/
 │   ├── 2025_Nam_eHMI-Voices-Contents/  # eHMI design
 │   └── DATA/              # Collected experimental data
 └── Workspace/             # Analysis and processing tools
-    ├── ExpDataAnalyze/    # Data processing and analysis
-    ├── FeatureProcessing/ # Audio feature extraction
-    ├── Models/            # Machine learning models
-    ├── VoiceGeneration/   # Speech synthesis
-    ├── utils/             # Utility functions
-    ├── Archive/           # Historical data
+    ├── ExpDataAnalyze/    # Data processing and analysis (ignore)
+    ├── FeatureProcessing/ # Audio feature extraction (ignore)
+    ├── Models/            # Machine learning models (GHCF and Causal Discovery)
     └── Docs/              # Documentation
 ```
 
@@ -49,31 +46,6 @@ Experiment3/
 - **Causal Analysis**: Cause-effect relationship modeling
 - **Source Code**: Model architectures and training scripts
 - **Outputs**: Prediction results and model performance metrics
-
-### VoiceGeneration/
-
-**Purpose**: Text-to-speech synthesis and audio processing
-
-- **Scripts**:
-    - `tts.py`: Azure-based speech synthesis
-    - `audio2video.py`: Audio-to-video conversion
-- **Notebooks**:
-    - `speech_tuning.ipynb`: Voice parameter optimization
-
-### utils/
-
-**Purpose**: Shared utility functions and tools
-
-- `augment.py`: Audio data augmentation
-- `pca_utils.py`: Principal component analysis utilities
-- `praat_feature_extraction.py`: Advanced acoustic feature extraction
-
-### Archive/
-
-**Purpose**: Historical data and deprecated models
-
-- Previous experiment versions and legacy code
-- Model backups and experimental iterations
 
 ### Docs/
 

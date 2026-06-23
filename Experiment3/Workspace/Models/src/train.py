@@ -12,11 +12,16 @@ from typing import Dict, List, Tuple
 import torch
 import torch.optim as optim
 from configs.config import (
+    BPR_LAMBDA,
+    BPR_NUM_NEG,
+    CAUSAL_MODEL_PATH,
     DEVICE,
     EVAL_INTERVAL,
     GRAPH_CONFIG,
-    MODEL_CONFIG,
+    LOSS_MODE,
+    NORMALIZE_INTERACTIONS,
     RANDOM_SEED,
+    RATING_THRESHOLD,
     TEST_SIZE,
 )
 from models.GHCF import GHCF
@@ -28,7 +33,7 @@ from tqdm.auto import tqdm
 from utility.batch_processing import BatchProcessor
 from utility.dataloader import eHMIDataset, load_processed_data
 from utility.gradnorm import GradNorm
-from utility.helper import resolve_causal_paths, set_seed
+from utility.helper import load_interaction_norm_stats, resolve_causal_paths, set_seed
 
 
 class EarlyStoppingHandler:
@@ -140,13 +145,23 @@ class Trainer:
 
     def _create_new_dataset(self, data_path: Path, processed_data_dir: Path) -> None:
         """Create new dataset."""
+        # Interaction-target normalization is independent of feature
+        # normalization; share the causal model's stats so RATING/VQ/SF targets
+        # match the SEM head's output space.
+        normalize_interactions = getattr(
+            self.args, "normalize_interactions", NORMALIZE_INTERACTIONS
+        )
+        norm_stats = load_interaction_norm_stats(
+            getattr(self.args, "causal_path", CAUSAL_MODEL_PATH)
+        )
         dataset = eHMIDataset(
             data_path=str(data_path),
             interaction_types=self.args.interactions,
             test_size=TEST_SIZE,
             adj_type=self.args.adj_type,
             random_state=RANDOM_SEED,
-            normalize_interactions=MODEL_CONFIG.get("normalize_features", False),
+            normalize_interactions=normalize_interactions,
+            interaction_norm_stats=norm_stats,
         )
 
         self.train_data = dataset.get_train_data()
@@ -207,10 +222,38 @@ class Trainer:
     def _setup_causal_paths(self) -> Tuple[str, str]:
         return resolve_causal_paths(self.args.causal_path, self.args.causal_config)
 
+    def _configure_rating_loss(self) -> None:
+        """Configure the RATING loss mode (mse / hybrid) on the model.
+
+        In hybrid mode the model also needs each user's positively-rated items
+        (rating >= RATING_THRESHOLD) to sample BPR negatives.
+        """
+        loss_mode = getattr(self.args, "loss", LOSS_MODE)
+        self.model.loss_mode = loss_mode
+        self.model.bpr_lambda = getattr(self.args, "bpr_lambda", BPR_LAMBDA)
+        self.model.bpr_num_neg = BPR_NUM_NEG
+        self.model.rating_threshold = RATING_THRESHOLD
+
+        if loss_mode == "hybrid":
+            pos_items: Dict[int, set] = {}
+            for row in self.train_data["interactions"].get("RATING", []):
+                if len(row) >= 3 and float(row[2]) >= RATING_THRESHOLD:
+                    pos_items.setdefault(int(row[0]), set()).add(int(row[1]))
+            self.model.rating_pos_items = pos_items
+            print(
+                f"RATING loss = hybrid (MSE + {self.model.bpr_lambda} * BPR); "
+                f"positives for {len(pos_items)} users"
+            )
+        else:
+            print("RATING loss = mse")
+
     def _setup_training_components(self) -> None:
         """Setup training components."""
         # Setup batch processor
         self.batch_processor = BatchProcessor(self.n_users, self.n_items, self.args.batch_size)
+
+        # Configure RATING loss mode (mse / hybrid BPR) on the model
+        self._configure_rating_loss()
 
         # Setup optimizer
         self.optimizer = optim.AdamW(
@@ -253,6 +296,12 @@ class Trainer:
         for interaction_type in self.interaction_types:
             self.loss_history[interaction_type] = []
             self.weight_history[interaction_type] = []
+
+        # In hybrid mode, also track the RATING MSE/BPR components so they are
+        # plotted alongside the combined RATING loss.
+        if getattr(self.model, "loss_mode", "mse") == "hybrid" and "RATING" in self.interaction_types:
+            self.loss_history.setdefault("RATING_mse", [])
+            self.loss_history.setdefault("RATING_bpr", [])
 
     def save_checkpoint(
         self, epoch: int, loss: float, metrics: dict, is_best: bool = False
@@ -362,6 +411,15 @@ class Trainer:
                 if interaction_type not in total_individual_losses:
                     total_individual_losses[interaction_type] = 0.0
                 total_individual_losses[interaction_type] += loss_val
+
+            # Diagnostic RATING loss components (hybrid mode): accumulated for
+            # logging only -- they are not part of the optimized/GradNorm dict.
+            for comp_name, comp_val in (
+                getattr(self.model, "last_rating_components", {}) or {}
+            ).items():
+                total_individual_losses[comp_name] = (
+                    total_individual_losses.get(comp_name, 0.0) + comp_val
+                )
 
             # Update progress bar
             self._update_progress_bar(pbar, loss.item(), individual_losses)

@@ -4,7 +4,7 @@ Helper functions for data processing and utilities.
 
 import random
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -172,7 +172,27 @@ def create_adjacency_matrix(
 
     if adj_type == "plain":
         adj_mat = adj_mat.tocsr()
-    elif adj_type == "norm":  # l2 normalization
+    elif adj_type == "pre":
+        # GHCF/LightGCN symmetric normalization WITHOUT self-loops:
+        #   A_hat = D^-1/2 @ A @ D^-1/2   (no + I)
+        # This matches the reference GHCF's `pre_adj_mat`. Self information is
+        # supplied separately by the layer's self-transform (and the layer-0
+        # term in the mean over layers), so adding a self-loop here would
+        # double-count it.
+        #
+        # GHCF's edges are binary, so its degree equals the interaction count.
+        # Here the edge weights are signed (z-scored) interaction values, so the
+        # degree is taken from the *structure* (number of incident edges), not
+        # the signed weight sum -- otherwise D^-1/2 would hit negative/zero row
+        # sums and produce NaN. This reduces exactly to GHCF for binary weights.
+        adj_csr = adj_mat.tocsr()
+        degree = np.asarray((adj_csr != 0).sum(axis=1)).flatten()
+        d_inv_sqrt = np.zeros_like(degree, dtype=np.float32)
+        nz = degree > 0
+        d_inv_sqrt[nz] = np.power(degree[nz].astype(np.float32), -0.5)
+        d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+        adj_mat = d_mat_inv_sqrt.dot(adj_csr).dot(d_mat_inv_sqrt).tocsr()
+    elif adj_type == "norm":  # symmetric normalization with self-loops
         # Add self-loops and normalize
         adj_mat = adj_mat + sp.eye(n_nodes)
         rowsum = np.array(adj_mat.sum(axis=1)).flatten()
@@ -233,6 +253,52 @@ def encode_categorical_features(
             encoding_maps[col] = encoding_map
 
     return data_encoded, encoding_maps
+
+
+def resolve_causal_norm_stats_path(causal_model_path: str) -> Path:
+    """Resolve the normalization-stats CSV that accompanies a saved causal model.
+
+    Mirrors the suffix convention used when the LiNGAM model is saved (and the
+    one ``CausalMixin``/``SEMHead`` use to locate the same file), so the
+    dataloader and the SEM head read identical mean/std values, e.g.
+    ``..._robust_model_data.npy`` -> ``..._normalization_stats.csv``.
+    """
+    name = str(causal_model_path)
+    for suffix in (
+        "_robust_model_data.npy",
+        "_model_data.npy",
+        "_robust_adjacency_matrix.npy",
+        "_adjacency_matrix.npy",
+    ):
+        if name.endswith(suffix):
+            return Path(name[: -len(suffix)] + "_normalization_stats.csv")
+    # Last resort: a sibling file derived from the stem
+    p = Path(name)
+    return p.with_name(p.stem + "_normalization_stats.csv")
+
+
+def load_interaction_norm_stats(causal_model_path: Optional[str]) -> Optional[pd.DataFrame]:
+    """Load interaction normalization stats (per-feature mean/std) from the
+    causal model's stats CSV.
+
+    These are the *same* statistics the SEM head uses, so z-scoring the
+    RATING / VOICE_QUALITY / SUBJECTIVE_FEELING targets with them places the
+    targets in the SEM head's output space exactly.
+
+    Returns the stats DataFrame, or ``None`` if the path is unset/missing (the
+    dataloader then falls back to per-split z-scoring).
+    """
+    if not causal_model_path:
+        return None
+    stats_path = resolve_causal_norm_stats_path(causal_model_path)
+    if not stats_path.exists():
+        print(
+            f"[norm] Causal normalization stats not found at {stats_path}; "
+            f"interaction targets will fall back to per-split z-scoring."
+        )
+        return None
+    print(f"[norm] Using causal normalization stats for interaction targets: {stats_path}")
+    return pd.read_csv(stats_path)
 
 
 def resolve_causal_paths(causal_model_path: str, causal_config_path: str) -> Tuple[str, str]:

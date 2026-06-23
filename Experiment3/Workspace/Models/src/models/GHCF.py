@@ -3,9 +3,10 @@ Graph Heterogeneous Collaborative Filtering (GHCF) model for eHMI recommendation
 PyTorch implementation adapted from the original TensorFlow version.
 """
 
+import random
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -185,6 +186,19 @@ class GHCF(nn.Module):
 
         self.debug_mode = False
 
+        # RATING loss configuration (set by the Trainer; defaults preserve the
+        # original MSE-only behavior). In "hybrid" mode the RATING loss becomes
+        # MSE + bpr_lambda * BPR. BFI/VQ/SF always use MSE.
+        self.loss_mode = "mse"
+        self.bpr_lambda = 1.0
+        self.bpr_num_neg = 1
+        self.rating_threshold = 0.0
+        # {user_id: set(item_id)} of positively-rated items, for BPR negatives
+        self.rating_pos_items: Optional[Dict[int, set]] = None
+        # Per-batch breakdown of the RATING loss (detached), for logging the MSE
+        # and BPR components separately. Populated only in hybrid mode.
+        self.last_rating_components: Dict[str, float] = {}
+
     def _init_weights(self) -> None:
         """Initialize model weights."""
         nn.init.xavier_uniform_(self.user_embedding.weight, gain=0.1)
@@ -302,6 +316,12 @@ class GHCF(nn.Module):
         # Store embeddings from each layer
         all_embeddings = [node_embeddings]
 
+        # Base (layer-0) relation embeddings, refined as they propagate through
+        # the layers (GHCF threads the relation embeddings through propagation
+        # and modulates each relation's messages by them).
+        relation_embeddings = self.relation_embedding(torch.tensor([]))
+        all_relation_embeddings = [relation_embeddings]
+
         # Pass through GNN layers
         current_embeddings = node_embeddings
         for layer_idx, gnn_layer in enumerate(self.gnn_layers):
@@ -310,8 +330,12 @@ class GHCF(nn.Module):
                 current_embeddings.shape[0] == expected_total_nodes
             ), f"Layer {layer_idx}: embedding shape {current_embeddings.shape} has wrong number of nodes"
 
-            current_embeddings = gnn_layer(current_embeddings, adj_matrix_list)
+            current_embeddings, relation_embeddings = gnn_layer(
+                current_embeddings, adj_matrix_list, relation_embeddings
+            )
             all_embeddings.append(current_embeddings)
+            if relation_embeddings is not None:
+                all_relation_embeddings.append(relation_embeddings)
 
             # Validate embedding shape after GNN layer
             assert (
@@ -335,8 +359,10 @@ class GHCF(nn.Module):
             final_embeddings.shape[1],
         ), f"Item embeddings shape {item_embeddings.shape} is incorrect"
 
-        # Get relation embeddings
-        relation_embeddings = self.relation_embedding(torch.tensor([]))
+        # Relation embeddings: mean across layers (GHCF-style), mirroring the
+        # node-embedding layer aggregation above. With a single layer this is
+        # the mean of the base and the once-transformed relation embeddings.
+        relation_embeddings = torch.stack(all_relation_embeddings, dim=0).mean(dim=0)
 
         # Validate relation embeddings shape
         assert (
@@ -574,6 +600,58 @@ class GHCF(nn.Module):
         shared_parameters.extend([self.user_feature_proj.weight, self.item_feature_proj.weight])
         return shared_parameters
 
+    def _sample_rating_negatives(
+        self, user_ids: torch.Tensor, device: torch.device
+    ) -> torch.Tensor:
+        """Sample one negative item per entry in ``user_ids`` for BPR.
+
+        A negative is an item the user has not positively rated (rating below
+        ``rating_threshold``); when the per-user positive set is unavailable a
+        uniformly random item is used.
+        """
+        pos_map = self.rating_pos_items or {}
+        neg_items = []
+        for u in user_ids.tolist():
+            pos = pos_map.get(int(u), ())
+            j = random.randrange(self.n_items)
+            tries = 0
+            while j in pos and tries < 10:
+                j = random.randrange(self.n_items)
+                tries += 1
+            neg_items.append(j)
+        return torch.tensor(neg_items, dtype=torch.long, device=device)
+
+    def _compute_bpr_loss(
+        self,
+        pos_scores: torch.Tensor,
+        anchor_user_ids: torch.Tensor,
+        user_embeddings: torch.Tensor,
+        item_embeddings: torch.Tensor,
+        relation_embeddings: torch.Tensor,
+        user_features: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        """BPR pairwise ranking loss on RATING: -logsigmoid(s_pos - s_neg).
+
+        Positives are the batch's above-threshold rated items; their predicted
+        scores (``pos_scores``) are reused. Negatives are sampled per anchor and
+        scored through the same RATING prediction path (graph head, or the
+        causal SEM head for the causal models), so gradients flow consistently.
+        """
+        n_neg = max(1, int(self.bpr_num_neg))
+        rep_users = anchor_user_ids.repeat_interleave(n_neg)
+        neg_items = self._sample_rating_negatives(rep_users, pos_scores.device)
+        neg_scores = self.predict_interaction(
+            user_embeddings,
+            item_embeddings,
+            relation_embeddings,
+            rep_users,
+            neg_items,
+            "RATING",
+            user_features=user_features,
+        ).view(-1)
+        pos_rep = pos_scores.repeat_interleave(n_neg)
+        return -F.logsigmoid(pos_rep - neg_scores).mean()
+
     def compute_loss(
         self,
         user_embeddings: torch.Tensor,
@@ -604,6 +682,9 @@ class GHCF(nn.Module):
         Returns:
             Total loss or tuple of (total_loss, individual_losses_dict) if return_individual_losses=True
         """
+        # Reset the per-batch RATING component breakdown (set below in hybrid mode)
+        self.last_rating_components = {}
+
         # Initialize individual_losses with all interaction types to ensure consistency
         individual_losses = {}
         for interaction_type in self.get_all_interaction_types():
@@ -627,6 +708,31 @@ class GHCF(nn.Module):
 
             predictions, targets = self._align_shapes(predictions, targets, interaction_type)
             loss = F.mse_loss(predictions, targets)
+
+            # Hybrid loss: add a BPR pairwise ranking term on RATING so training
+            # also optimizes item ordering (recall/nDCG), while MSE retains the
+            # rating magnitude the causal SEM head relies on. The MSE and (raw,
+            # unweighted) BPR components are recorded detached for logging.
+            if self.loss_mode == "hybrid" and interaction_type == "RATING":
+                mse_component = loss
+                bpr_component = predictions.new_tensor(0.0)
+                pos_mask = targets.view(-1) >= self.rating_threshold
+                if bool(pos_mask.any()):
+                    pos_scores = predictions.view(-1)[pos_mask]
+                    anchor_users = user_ids[pos_mask]
+                    bpr_component = self._compute_bpr_loss(
+                        pos_scores,
+                        anchor_users,
+                        user_embeddings,
+                        item_embeddings,
+                        relation_embeddings,
+                        user_features,
+                    )
+                    loss = loss + self.bpr_lambda * bpr_component
+                self.last_rating_components = {
+                    "RATING_mse": float(mse_component.detach()),
+                    "RATING_bpr": float(bpr_component.detach()),
+                }
 
             if self.debug_mode:
                 print(f"Loss computation for {interaction_type}:")

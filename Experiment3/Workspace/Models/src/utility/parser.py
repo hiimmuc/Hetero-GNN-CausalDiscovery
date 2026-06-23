@@ -18,10 +18,13 @@ from configs.config import (
     BATCH_SIZE,
     CAUSAL_CONFIG_PATH,
     CAUSAL_MODEL_PATH,
+    BPR_LAMBDA,
     CV_CONFIG,
     EARLY_STOP_PATIENCE,
     GRAPH_CONFIG,
     LEARNING_RATE,
+    LOSS_MODE,
+    NORMALIZE_INTERACTIONS,
     NUM_EPOCHS,
     WEIGHT_DECAY,
 )
@@ -75,6 +78,20 @@ def add_training_arguments(parser: argparse.ArgumentParser) -> None:
         help="Early stopping patience in epochs without improvement",
     )
     parser.add_argument("--decay", type=float, default=WEIGHT_DECAY, help="Weight decay")
+    parser.add_argument(
+        "--loss",
+        type=str,
+        default=LOSS_MODE,
+        choices=["mse", "hybrid"],
+        help="RATING loss mode: 'mse' (magnitude only) or 'hybrid' (MSE + BPR ranking). "
+        "BFI/VQ/SF always use MSE.",
+    )
+    parser.add_argument(
+        "--bpr_lambda",
+        type=float,
+        default=BPR_LAMBDA,
+        help="Weight of the BPR ranking term when --loss hybrid",
+    )
     parser.add_argument(
         "--embed_size",
         type=int,
@@ -168,7 +185,14 @@ def add_cv_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--adj_type", type=str, default=ADJ_TYPE, help="Adjacency matrix type")
     parser.add_argument(
-        "--normalize_interactions", action="store_true", help="Normalize interaction values"
+        "--normalize_interactions",
+        action=argparse.BooleanOptionalAction,
+        default=NORMALIZE_INTERACTIONS,
+        help=(
+            "Normalize interaction targets (BFI MinMax; RATING/VQ/SF z-scored "
+            "via the shared causal stats). Use --no-normalize_interactions to disable. "
+            "Note: the causal models require this enabled for consistent losses."
+        ),
     )
 
 

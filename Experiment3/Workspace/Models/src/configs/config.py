@@ -115,13 +115,37 @@ RANDOM_SEED = 42
 TEST_SIZE = 0.2
 RATING_THRESHOLD = 0.0  # Threshold for positive ratings (after normalization)
 
+# Loss mode for the RATING task (BFI/VOICE_QUALITY/SUBJECTIVE_FEELING are always
+# MSE — pairwise ranking is meaningless for multi-dim perception scores):
+#   - "mse":    rating magnitude regression only (original behavior)
+#   - "hybrid": MSE + BPR_LAMBDA * BPR pairwise ranking, so training also
+#               optimizes the item ordering that recall/nDCG@k evaluate while
+#               keeping rating magnitude (needed by the causal SEM head).
+LOSS_MODE = "mse"
+BPR_LAMBDA = 1.0  # weight of the BPR ranking term in hybrid mode (tune)
+BPR_NUM_NEG = 1  # negatives sampled per positive rating for BPR
+
+# Whether to normalize interaction *targets*. Decoupled from feature
+# normalization (MODEL_CONFIG["normalize_features"]) on purpose:
+#   - BFI_PERCEPTION: MinMax to [0, 1] (BFI scale)
+#   - RATING / VOICE_QUALITY / SUBJECTIVE_FEELING: z-scored with the causal
+#     model's normalization_stats.csv when available, so the targets share the
+#     SEM head's output space exactly (single source of truth). Falls back to
+#     per-split z-score only if those stats are missing.
+# The causal models (GHCF-CE / GHCF-RB-causal) require this to be True for
+# their rating/quality/feeling losses to be computed in a consistent space.
+NORMALIZE_INTERACTIONS = True
+
 # Causal model settings (paths relative to the Models/ working directory)
 CAUSAL_MODEL_PATH = "causal_outputs/models/lingam_causal_model_robust_model_data.npy"
 CAUSAL_CONFIG_PATH = "src/configs/causal_config.yaml"
 
 
 # Adjacency matrix settings
-ADJ_TYPE = "plain"  # Options: 'plain', 'norm', 'gcmc'
+# 'pre' matches the reference GHCF: symmetric D^-1/2 A D^-1/2 with NO self-loop
+# (self-info comes from the layer self-transform + layer-0 term). Other options:
+# 'norm' (symmetric with self-loop), 'mean' (row-normalized), 'plain' (raw values).
+ADJ_TYPE = "pre"
 
 # Cross-validation settings
 CV_CONFIG = {

@@ -10,14 +10,16 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 from configs.config import (
+    CAUSAL_MODEL_PATH,
     EVAL_INTERVAL,
+    NORMALIZE_INTERACTIONS,
     NUM_EPOCHS,
     RANDOM_SEED,
 )
 from sklearn.model_selection import KFold, StratifiedKFold
 from train import Trainer
 from utility.dataloader import eHMIDataset, load_processed_data
-from utility.helper import set_seed
+from utility.helper import load_interaction_norm_stats, set_seed
 
 
 class CrossValidationSplitter:
@@ -169,13 +171,19 @@ class CrossValidationTrainer:
         self, data_path: Path, processed_data_dir: Path
     ) -> Tuple[Dict, Dict, Dict]:
         """Create new dataset."""
+        norm_stats = load_interaction_norm_stats(
+            getattr(self.args, "causal_path", CAUSAL_MODEL_PATH)
+        )
         dataset = eHMIDataset(
             data_path=str(data_path),
             interaction_types=self.args.interactions,
             test_size=0.0,  # Don't split here, we'll handle CV splitting
             adj_type=getattr(self.args, "adj_type", "plain"),
             random_state=RANDOM_SEED,
-            normalize_interactions=getattr(self.args, "normalize_interactions", False),
+            normalize_interactions=getattr(
+                self.args, "normalize_interactions", NORMALIZE_INTERACTIONS
+            ),
+            interaction_norm_stats=norm_stats,
         )
 
         # Get all data (no initial train/test split)
