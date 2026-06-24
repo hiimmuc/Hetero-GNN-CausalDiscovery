@@ -1,55 +1,75 @@
 # Experiment 3
 
+eHMI (external Human-Machine Interface) voice study. This repository holds the
+experimental materials and the data-analysis and modeling workspace for an
+experiment on how synthesized eHMI voices are perceived: their rating, the
+personality attributed to them, their perceived voice quality, and the
+listener's subjective feeling. The modeling workspace pairs a graph
+recommender with a causal-discovery pipeline to relate listener personality to
+these perceptions.
+
 ## Directory Structure
 
 ```text
 Experiment3/
-├── Experiments/           # Experimental setup and data collection
-│   ├── 2025_Nam_eHMI-Voices-Contents/  # eHMI design
-│   └── DATA/              # Collected experimental data
-└── Workspace/             # Analysis and processing tools
-    ├── ExpDataAnalyze/    # Data processing and analysis (ignore)
-    ├── FeatureProcessing/ # Audio feature extraction (ignore)
-    ├── Models/            # Machine learning models (GHCF and Causal Discovery)
-    └── Docs/              # Documentation
+├── Experiments/                       # Experimental setup and collected data
+│   ├── 2025_Nam_eHMI-Voices-Contents/ # eHMI voice stimuli and design materials
+│   └── DATA/                          # Raw collected experimental data
+└── Workspace/                         # Analysis, processing, and modeling tools
+    ├── ExpDataAnalyze/                # Data preprocessing and statistical analysis
+    ├── FeatureProcessing/             # Audio feature extraction and analysis
+    ├── Models/                        # GHCF recommender + causal discovery
+    └── Docs/                          # Documentation and research materials
 ```
 
-## Workspace Directory
+## Experiments
+
+Materials and raw data from running the study.
+
+- **`2025_Nam_eHMI-Voices-Contents/`** — the eHMI voice stimuli, content
+  designs, and presentation materials used in the experiment.
+- **`DATA/`** — the raw data collected from participants (survey responses and
+  per-trial measurements).
+
+## Workspace
 
 ### ExpDataAnalyze/
 
-**Purpose**: data processing and statistical analysis
+Data preprocessing and statistical analysis of the collected responses.
 
-- **Scripts**:
-    - `preprocess_data.py`: data preprocessing
-    - `dataProcessing.ipynb`: analysis and visualization
-- **Data Organization**: Structured by experimental phases (data/, data_25/)
-- **Outputs**: Statistical analysis results and visualizations
+- `preprocess_data.py` — data cleaning and preprocessing.
+- `dataProcessing.ipynb` — exploratory analysis and visualization.
+- Data is organized by experimental phase (for example `data/`, `data_25/`).
+- Outputs are statistical-analysis results and figures.
 
 ### FeatureProcessing/
 
-**Purpose**: Advanced audio feature extraction and analysis
+Audio feature extraction from the voice stimuli.
 
-- **Feature Extraction Scripts**:
-    - `feature_extraction_mfcc.py`: Mel-frequency cepstral coefficients
-    - `feature_extraction_mel.py`: Mel spectrogram features
-    - `feature_extraction_emb.py`: Deep learning embeddings
-- **Analysis Notebooks**:
-    - `feat_extract.ipynb`: feature extraction
-    - `feat_analyze.ipynb`: Feature analysis and modeling
+- `feature_extraction_mfcc.py` — Mel-frequency cepstral coefficients (MFCC).
+- `feature_extraction_mel.py` — Mel spectrogram features.
+- `feature_extraction_emb.py` — deep-learning audio embeddings.
+- `feat_extract.ipynb` — runs and inspects feature extraction.
+- `feat_analyze.ipynb` — feature analysis and modeling.
 
 ### Models/
 
-**Purpose**: Recommendation model and Causal Discovery
+The machine-learning workspace, combining a recommender with causal analysis.
+See `Workspace/Models/src/README.md` for full details.
 
-- **Checkpoints**: Trained model parameters and states
-- **Causal Analysis**: Cause-effect relationship modeling
-- **Source Code**: Model architectures and training scripts
-- **Outputs**: Prediction results and model performance metrics
+- **Recommender** — a Graph Heterogeneous Collaborative Filtering (GHCF) model
+  that jointly predicts voice rating, perceived personality (BFI), perceived
+  voice quality, and subjective feeling over a heterogeneous user-item graph.
+- **Causal discovery** — a LiNGAM pipeline that learns a causal DAG from
+  personality differences through perceptual mediators to the final rating. The
+  discovered structure can be embedded into the recommender as a differentiable
+  structural-equation head.
+- **Subdirectories** — `src/` (source code), `data/` (input spreadsheets and
+  cached tensors), `checkpoints/` (trained models and logs),
+  `causal_outputs/` (causal artifacts and figures), and `archive/` (legacy data
+  and the original GHCF reference implementation).
 
 ### Docs/
 
-**Purpose**: Documentation and research materials
-
-- Model prompts and experimental protocols
-- Research documentation and methodology
+Documentation and research materials: model prompts, experimental protocols,
+and methodology notes.
