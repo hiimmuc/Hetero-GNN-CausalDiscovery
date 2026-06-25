@@ -28,8 +28,8 @@ src/
 │   └── causal_config.yaml  # LiNGAM causal discovery configuration
 ├── models/
 │   ├── GHCF.py             # Base multi-relational GNN recommender
-│   ├── GHCF_Causal.py      # GNN on BFI only; other tasks via the causal SEM head
-│   ├── GHCF_Refine.py      # GNN on all tasks; causal head refines non-BFI predictions
+│   ├── GHCF_CE.py          # GNN on BFI only; other tasks via the causal SEM head
+│   ├── GHCF_ACE.py         # GNN on all tasks; ensembles GNN + causal head for non-BFI
 │   ├── HeteroGNN.py        # Heterogeneous GCN/GraphSAGE/GAT layers + relation embeddings
 │   ├── CausalModel.py      # Offline LiNGAM causal discovery (structure learning)
 │   ├── CausalHead.py       # Differentiable SEM head built from the discovered DAG
@@ -64,8 +64,8 @@ The project runs in two stages:
 | Module | Class | Description |
 | --- | --- | --- |
 | `models/GHCF.py` | `GHCF` | Base model. Multi-relational embedding propagation over the user-item graph, followed by a multi-task prediction module for every interaction type. |
-| `models/GHCF_Causal.py` | `GHCF_Causal` | Builds the GNN on `BFI_PERCEPTION` only. Graph BFI predictions are converted to BFI-TIPI differences and propagated through the SEM head to predict all other interactions. The full path is differentiable. |
-| `models/GHCF_Refine.py` | `GHCF_Refine` | Builds the GNN on all interaction types. When causal mode is enabled, non-BFI predictions are replaced by the SEM head driven by BFI-TIPI differences; otherwise it falls back to graph predictions. |
+| `models/GHCF_CE.py` | `GHCF_CE` | Builds the GNN on `BFI_PERCEPTION` only. Graph BFI predictions are converted to BFI-TIPI differences and propagated through the SEM head to predict all other interactions. The full path is differentiable. |
+| `models/GHCF_ACE.py` | `GHCF_ACE` | Adaptive Causal Ensemble. Builds the GNN on all interaction types, and for non-BFI predictions blends the GNN head with the causal SEM head: `pred = w_mlp * pred_gnn + w_causal * pred_causal`. Weights are a per-type learnable gate (`--ace_weight_mode learnable`) or fixed hyperparameters (`--ace_weight_mode fixed`). |
 | `models/HeteroGNN.py` | `HeteroGCNLayer`, `HeteroGraphSAGELayer`, `HeteroGATLayer`, `MultiRelationEmbedding` | Per-relation message passing layers and relation/node embeddings. Layer type is selected with `--gnn_type`. |
 | `models/CausalModel.py` | `CausalModel` | Offline LiNGAM structure learning with prior knowledge, bootstrap robustness analysis, graph visualization, and artifact export. |
 | `models/CausalHead.py` | `SEMHead` | Linear SEM constrained to the discovered DAG. Weights are initialized from the LiNGAM coefficients and masked by the DAG structure; equations are evaluated in causal order so mediated paths propagate correctly. Operates in the same z-scored space LiNGAM was fitted on. |
@@ -121,8 +121,10 @@ python src/main.py train --embed_size 128 --lr 0.0001 --epoch 500
 # Use the causal SEM head for non-BFI predictions
 python src/main.py train --causal
 
-# Use the causal refinement variant
-python src/main.py train --refine
+# Use the adaptive causal ensemble (GNN + causal head, learnable blend)
+python src/main.py train --ace
+# ... or a fixed manual blend
+python src/main.py train --ace --ace_weight_mode fixed --ace_w_mlp 0.7 --ace_w_causal 0.3
 
 # Hybrid ranking loss with GradNorm multi-task balancing
 python src/main.py train --loss hybrid --bpr_lambda 1.0 --use_gradnorm
@@ -145,8 +147,10 @@ Selected `train` arguments:
 | `--bpr_lambda` | `BPR_LAMBDA` | BPR ranking term weight in hybrid mode. |
 | `--use_gradnorm` | off | Enable GradNorm dynamic loss balancing. |
 | `--gradnorm_alpha` | `GRAPH_CONFIG.gradnorm_alpha` | GradNorm restoring force. |
-| `--causal` | off | Predict non-BFI interactions via the causal SEM head (`GHCF_Causal`). |
-| `--refine` | off | Use causal refinement of predictions (`GHCF_Refine`). |
+| `--causal` | off | Predict non-BFI interactions via the causal SEM head only (`GHCF_CE`). |
+| `--ace` | off | Adaptive Causal Ensemble: blend GNN and causal head for non-BFI (`GHCF_ACE`). |
+| `--ace_weight_mode` | `ACE_WEIGHT_MODE` | ACE mixing: `learnable` (per-type gate) or `fixed`. |
+| `--ace_w_mlp` / `--ace_w_causal` | config | Fixed-mode GNN/causal weights (applied to all non-BFI types). |
 | `--causal_path` | `CAUSAL_MODEL_PATH` | Path to the fitted causal model artifact. |
 | `--causal_config` | `CAUSAL_CONFIG_PATH` | Path to the causal YAML config. |
 | `--normalize_interactions` | `NORMALIZE_INTERACTIONS` | Toggle target normalization (`--no-normalize_interactions` disables). |

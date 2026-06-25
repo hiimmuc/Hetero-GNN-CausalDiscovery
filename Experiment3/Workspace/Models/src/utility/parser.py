@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent))
 
 from configs.config import (
+    ACE_WEIGHT_MODE,
     ADJ_TYPE,
     BATCH_SIZE,
     CAUSAL_CONFIG_PATH,
@@ -131,10 +132,32 @@ def add_gradnorm_arguments(parser: argparse.ArgumentParser) -> None:
 def add_causal_arguments(parser: argparse.ArgumentParser) -> None:
     """Add causal model arguments."""
     parser.add_argument(
-        "--causal", action="store_true", help="Use causal model for rating prediction"
+        "--causal", action="store_true", help="Use GHCF-CE (causal head predicts non-BFI)"
     )
     parser.add_argument(
-        "--refine", action="store_true", help="Use causal refinement model for rating prediction"
+        "--ace",
+        action="store_true",
+        help="Use GHCF-ACE: GNN predicts all interactions and is ensembled with the "
+        "causal head for non-BFI predictions",
+    )
+    parser.add_argument(
+        "--ace_weight_mode",
+        type=str,
+        default=ACE_WEIGHT_MODE,
+        choices=["learnable", "fixed"],
+        help="GHCF-ACE GNN/causal mixing: 'learnable' per-type gate or 'fixed' weights",
+    )
+    parser.add_argument(
+        "--ace_w_mlp",
+        type=float,
+        default=None,
+        help="GHCF-ACE fixed-mode GNN weight applied to all non-BFI types (overrides config)",
+    )
+    parser.add_argument(
+        "--ace_w_causal",
+        type=float,
+        default=None,
+        help="GHCF-ACE fixed-mode causal weight applied to all non-BFI types (overrides config)",
     )
     parser.add_argument(
         "--causal_path",

@@ -140,6 +140,18 @@ NORMALIZE_INTERACTIONS = True
 CAUSAL_MODEL_PATH = "causal_outputs/models/lingam_causal_model_robust_model_data.npy"
 CAUSAL_CONFIG_PATH = "src/configs/causal_config.yaml"
 
+# GHCF-ACE: how to combine the GNN head and the causal SEM head for the
+# non-BFI predictions (RATING / VOICE_QUALITY / SUBJECTIVE_FEELING):
+#   pred = w_mlp * pred_gnn + w_causal * pred_causal
+#   - "learnable": per-type convex gate, w_causal = sigmoid(logit) (init 0.5/0.5)
+#   - "fixed":     per-type hyperparameters from ACE_FIXED_WEIGHTS (manual tuning)
+ACE_WEIGHT_MODE = "learnable"
+ACE_FIXED_WEIGHTS = {
+    "RATING": {"w_mlp": 0.5, "w_causal": 0.5},
+    "VOICE_QUALITY": {"w_mlp": 0.5, "w_causal": 0.5},
+    "SUBJECTIVE_FEELING": {"w_mlp": 0.5, "w_causal": 0.5},
+}
+
 
 # Adjacency matrix settings
 # 'pre' matches the reference GHCF: symmetric D^-1/2 A D^-1/2 with NO self-loop

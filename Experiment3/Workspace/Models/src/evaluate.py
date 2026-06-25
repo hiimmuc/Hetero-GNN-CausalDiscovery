@@ -10,6 +10,8 @@ from typing import Dict, List, Optional, Tuple
 
 import torch
 from configs.config import (
+    ACE_FIXED_WEIGHTS,
+    ACE_WEIGHT_MODE,
     CAUSAL_CONFIG_PATH,
     CAUSAL_MODEL_PATH,
     DEVICE,
@@ -17,8 +19,8 @@ from configs.config import (
     RANDOM_SEED,
 )
 from models.GHCF import GHCF
-from models.GHCF_Causal import GHCF_Causal
-from models.GHCF_Refine import GHCF_Refine
+from models.GHCF_ACE import GHCF_ACE
+from models.GHCF_CE import GHCF_CE
 from utility.batch_processing import BatchProcessor
 from utility.dataloader import load_processed_data
 from utility.helper import resolve_causal_paths, set_seed
@@ -37,11 +39,11 @@ class Evaluator:
         self.test_data: Optional[Dict] = None
         self.metadata: Optional[Dict] = None
 
-        # Set default values for causal and refine if not provided
+        # Set default values for causal and ace if not provided
         if not hasattr(self.args, "causal"):
             self.args.causal = False
-        if not hasattr(self.args, "refine"):
-            self.args.refine = False
+        if not hasattr(self.args, "ace"):
+            self.args.ace = False
         if not hasattr(self.args, "causal_path"):
             self.args.causal_path = CAUSAL_MODEL_PATH
         if not hasattr(self.args, "causal_config"):
@@ -126,50 +128,47 @@ class Evaluator:
         model_dir = Path(self.args.model_dir)
 
         # Create model based on arguments - similar to train.py
-        if not self.args.causal and not self.args.refine:
+        use_ace = getattr(self.args, "ace", False)
+        common_kwargs = dict(
+            n_users=model_config["n_users"],
+            n_items=model_config["n_items"],
+            n_user_features=MODEL_CONFIG["user_feature_dim"],
+            n_item_features=MODEL_CONFIG["item_feature_dim"],
+            interaction_types=model_config["interaction_types"],
+            embedding_dim=model_config["graph_config"]["embedding_dim"],
+            layer_sizes=model_config["graph_config"]["layer_sizes"],
+            dropout_rates=model_config["graph_config"]["dropout_rates"],
+            gnn_type=model_config["graph_config"]["gnn_type"],
+            n_heads=model_config["graph_config"].get("n_heads", 4),
+            device=self.device,
+        )
+
+        if not self.args.causal and not use_ace:
             self.logger.info("Using standard GHCF model")
-            self.model = GHCF(
-                n_users=model_config["n_users"],
-                n_items=model_config["n_items"],
-                n_user_features=MODEL_CONFIG["user_feature_dim"],
-                n_item_features=MODEL_CONFIG["item_feature_dim"],
-                interaction_types=model_config["interaction_types"],
-                embedding_dim=model_config["graph_config"]["embedding_dim"],
-                layer_sizes=model_config["graph_config"]["layer_sizes"],
-                dropout_rates=model_config["graph_config"]["dropout_rates"],
-                gnn_type=model_config["graph_config"]["gnn_type"],
-                n_heads=model_config["graph_config"].get("n_heads", 4),
-                device=self.device,
-            ).to(self.device)
+            self.model = GHCF(**common_kwargs).to(self.device)
 
-        elif self.args.causal or self.args.refine:
+        else:
+            if self.args.causal and use_ace:
+                raise ValueError("Cannot use both --causal and --ace flags simultaneously")
+
             causal_model_path, causal_config_path = self._setup_causal_paths()
-
-            if self.args.refine and not self.args.causal:
-                model_class = GHCF_Refine
-                self.logger.info("Using GHCF_Refine model")
-            elif self.args.causal and not self.args.refine:
-                model_class = GHCF_Causal
-                self.logger.info("Using GHCF_Causal model")
-            else:
-                raise ValueError("Cannot use both causal and refine flags simultaneously")
-
-            self.model = model_class(
-                n_users=model_config["n_users"],
-                n_items=model_config["n_items"],
-                n_user_features=MODEL_CONFIG["user_feature_dim"],
-                n_item_features=MODEL_CONFIG["item_feature_dim"],
-                interaction_types=model_config["interaction_types"],
-                embedding_dim=model_config["graph_config"]["embedding_dim"],
-                layer_sizes=model_config["graph_config"]["layer_sizes"],
-                dropout_rates=model_config["graph_config"]["dropout_rates"],
-                gnn_type=model_config["graph_config"]["gnn_type"],
-                n_heads=model_config["graph_config"].get("n_heads", 4),
+            causal_kwargs = dict(
+                common_kwargs,
                 use_causal=True,
                 causal_model_path=causal_model_path,
                 causal_config_path=causal_config_path,
-                device=self.device,
-            ).to(self.device)
+            )
+
+            if use_ace:
+                self.logger.info("Using GHCF_ACE model")
+                self.model = GHCF_ACE(
+                    **causal_kwargs,
+                    ace_weight_mode=getattr(self.args, "ace_weight_mode", ACE_WEIGHT_MODE),
+                    ace_fixed_weights=ACE_FIXED_WEIGHTS,
+                ).to(self.device)
+            else:
+                self.logger.info("Using GHCF_CE model")
+                self.model = GHCF_CE(**causal_kwargs).to(self.device)
         # Load checkpoint
         checkpoint_path = model_dir / self.args.checkpoint
         if checkpoint_path.exists():
@@ -282,9 +281,16 @@ def main():
         default=["RATING", "BFI_PERCEPTION", "VOICE_QUALITY", "SUBJECTIVE_FEELING"],
         help="Interaction types to evaluate",
     )
-    # Add causal and refine arguments similar to train.py
-    parser.add_argument("--causal", action="store_true", help="Use GHCF_Causal model")
-    parser.add_argument("--refine", action="store_true", help="Use GHCF_Refine model")
+    # Add causal and ACE arguments similar to train.py
+    parser.add_argument("--causal", action="store_true", help="Use GHCF_CE model")
+    parser.add_argument("--ace", action="store_true", help="Use GHCF_ACE model")
+    parser.add_argument(
+        "--ace_weight_mode",
+        type=str,
+        default=ACE_WEIGHT_MODE,
+        choices=["learnable", "fixed"],
+        help="GHCF-ACE GNN/causal mixing mode (must match training)",
+    )
     parser.add_argument(
         "--causal_path",
         type=str,

@@ -12,6 +12,8 @@ from typing import Dict, List, Tuple
 import torch
 import torch.optim as optim
 from configs.config import (
+    ACE_FIXED_WEIGHTS,
+    ACE_WEIGHT_MODE,
     BPR_LAMBDA,
     BPR_NUM_NEG,
     CAUSAL_MODEL_PATH,
@@ -25,8 +27,8 @@ from configs.config import (
     TEST_SIZE,
 )
 from models.GHCF import GHCF
-from models.GHCF_Causal import GHCF_Causal
-from models.GHCF_Refine import GHCF_Refine
+from models.GHCF_ACE import GHCF_ACE
+from models.GHCF_CE import GHCF_CE
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
@@ -175,49 +177,60 @@ class Trainer:
 
     def _create_model(self) -> None:
         """Create model based on arguments."""
-        if not self.args.causal and not self.args.refine:
-            self.model = GHCF(
-                n_users=self.n_users,
-                n_items=self.n_items,
-                n_user_features=self.train_data["user_features"].shape[1],
-                n_item_features=self.train_data["item_features"].shape[1],
-                interaction_types=self.interaction_types,
-                embedding_dim=self.args.embed_size,
-                layer_sizes=GRAPH_CONFIG["layer_sizes"],
-                dropout_rates=GRAPH_CONFIG["dropout_rates"],
-                gnn_type=getattr(self.args, "gnn_type", GRAPH_CONFIG["gnn_type"]),
-                n_heads=getattr(self.args, "n_heads", GRAPH_CONFIG.get("n_heads", 4)),
-                device=self.device,
-            ).to(self.device)
+        use_ace = getattr(self.args, "ace", False)
+        common_kwargs = dict(
+            n_users=self.n_users,
+            n_items=self.n_items,
+            n_user_features=self.train_data["user_features"].shape[1],
+            n_item_features=self.train_data["item_features"].shape[1],
+            interaction_types=self.interaction_types,
+            embedding_dim=self.args.embed_size,
+            layer_sizes=GRAPH_CONFIG["layer_sizes"],
+            dropout_rates=GRAPH_CONFIG["dropout_rates"],
+            gnn_type=getattr(self.args, "gnn_type", GRAPH_CONFIG["gnn_type"]),
+            n_heads=getattr(self.args, "n_heads", GRAPH_CONFIG.get("n_heads", 4)),
+            device=self.device,
+        )
+
+        if not self.args.causal and not use_ace:
+            self.model = GHCF(**common_kwargs).to(self.device)
 
         else:
+            if self.args.causal and use_ace:
+                raise ValueError("Cannot use both --causal and --ace flags simultaneously")
+
             causal_model_path, causal_config_path = self._setup_causal_paths()
-
-            if self.args.refine and not self.args.causal:
-                model_class = GHCF_Refine
-            elif self.args.causal and not self.args.refine:
-                model_class = GHCF_Causal
-            else:
-                raise ValueError("Cannot use both causal and refine flags simultaneously")
-
-            self.model = model_class(
-                n_users=self.n_users,
-                n_items=self.n_items,
-                n_user_features=self.train_data["user_features"].shape[1],
-                n_item_features=self.train_data["item_features"].shape[1],
-                interaction_types=self.interaction_types,
-                embedding_dim=self.args.embed_size,
-                layer_sizes=GRAPH_CONFIG["layer_sizes"],
-                dropout_rates=GRAPH_CONFIG["dropout_rates"],
-                gnn_type=getattr(self.args, "gnn_type", GRAPH_CONFIG["gnn_type"]),
-                n_heads=getattr(self.args, "n_heads", GRAPH_CONFIG.get("n_heads", 4)),
+            causal_kwargs = dict(
+                common_kwargs,
                 use_causal=True,
                 causal_model_path=causal_model_path,
                 causal_config_path=causal_config_path,
-                device=self.device,
-            ).to(self.device)
+            )
+
+            if use_ace:
+                self.model = GHCF_ACE(
+                    **causal_kwargs,
+                    ace_weight_mode=getattr(self.args, "ace_weight_mode", ACE_WEIGHT_MODE),
+                    ace_fixed_weights=self._resolve_ace_fixed_weights(),
+                ).to(self.device)
+            else:
+                self.model = GHCF_CE(**causal_kwargs).to(self.device)
 
         print(f"Model created with {sum(p.numel() for p in self.model.parameters())} parameters")
+
+    def _resolve_ace_fixed_weights(self) -> Dict[str, Dict[str, float]]:
+        """Per-type fixed ACE weights: config defaults, optionally overridden by
+        global --ace_w_mlp / --ace_w_causal applied to every non-BFI type."""
+        weights = {k: dict(v) for k, v in ACE_FIXED_WEIGHTS.items()}
+        w_mlp = getattr(self.args, "ace_w_mlp", None)
+        w_causal = getattr(self.args, "ace_w_causal", None)
+        if w_mlp is not None or w_causal is not None:
+            for t in weights:
+                if w_mlp is not None:
+                    weights[t]["w_mlp"] = w_mlp
+                if w_causal is not None:
+                    weights[t]["w_causal"] = w_causal
+        return weights
 
     def _setup_causal_paths(self) -> Tuple[str, str]:
         return resolve_causal_paths(self.args.causal_path, self.args.causal_config)
@@ -469,6 +482,12 @@ class Trainer:
         for interaction_type, weight in self.current_interaction_weights.items():
             self.writer.add_scalar(f"Weights/{interaction_type}", weight, epoch)
 
+        # Log GHCF-ACE GNN/causal mixing weights (per interaction type)
+        if hasattr(self.model, "get_ace_weights"):
+            for itype, (w_mlp, w_causal) in self.model.get_ace_weights().items():
+                self.writer.add_scalar(f"ACE/{itype}_w_mlp", w_mlp, epoch)
+                self.writer.add_scalar(f"ACE/{itype}_w_causal", w_causal, epoch)
+
         # Log evaluation metrics
         if eval_metrics:
             for metric_name, metric_value in eval_metrics.items():
@@ -520,6 +539,14 @@ class Trainer:
             "final_weights": self.current_interaction_weights,
         }
 
+        # Final GHCF-ACE GNN/causal mixing weights, if applicable
+        if hasattr(self.model, "get_ace_weights"):
+            results["ace_weight_mode"] = getattr(self.model, "ace_weight_mode", None)
+            results["ace_weights"] = {
+                itype: {"w_mlp": w_mlp, "w_causal": w_causal}
+                for itype, (w_mlp, w_causal) in self.model.get_ace_weights().items()
+            }
+
         with open(self.model_dir / "results.json", "w") as f:
             json.dump(results, f, indent=2)
 
@@ -541,12 +568,21 @@ class Trainer:
             )
             weight_str = f" | Weights: {weights_display}"
 
+        # GHCF-ACE: show the causal share per interaction type
+        ace_str = ""
+        if hasattr(self.model, "get_ace_weights"):
+            ace_display = ", ".join(
+                [f"{k}: {w_causal:.2f}" for k, (_, w_causal) in self.model.get_ace_weights().items()]
+            )
+            ace_str = f" | ACE w_causal: {ace_display}"
+
         # Get current learning rate
         current_lr = self.scheduler.get_last_lr()[0]
 
         print(
             f"Epoch {epoch:4d} | Total Loss: {train_loss:.4f} | {individual_loss_str} | "
-            f"Recall@10: {current_score:.4f} | LR: {current_lr:.6f}{weight_str} | Time: {epoch_time:.2f}s"
+            f"Recall@10: {current_score:.4f} | LR: {current_lr:.6f}{weight_str}{ace_str} | "
+            f"Time: {epoch_time:.2f}s"
         )
 
     def run(self) -> None:

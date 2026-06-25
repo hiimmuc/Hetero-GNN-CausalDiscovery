@@ -1,5 +1,5 @@
 """
-GHCF_Causal: GHCF model where non-BFI interactions are predicted causally.
+GHCF_CE: GHCF model where non-BFI interactions are predicted causally.
 
 The GNN is built on BFI_PERCEPTION interactions only. BFI predictions from
 the graph are turned into BFI-TIPI differences and propagated through the
@@ -25,7 +25,7 @@ except ImportError:
     from GHCF import GHCF
 
 
-class GHCF_Causal(GHCF, CausalMixin):
+class GHCF_CE(GHCF, CausalMixin):
     """
     Causal GHCF model that predicts non-BFI interactions through the causal DAG.
 
@@ -53,7 +53,7 @@ class GHCF_Causal(GHCF, CausalMixin):
         causal_config_path: str = None,
     ):
         """
-        Initialize GHCF_Causal model.
+        Initialize GHCF_CE model.
 
         Args:
             n_users: Number of users
@@ -76,11 +76,11 @@ class GHCF_Causal(GHCF, CausalMixin):
 
         if "BFI_PERCEPTION" not in interaction_types:
             raise ValueError(
-                "BFI_PERCEPTION must be included in interaction_types for GHCF_Causal"
+                "BFI_PERCEPTION must be included in interaction_types for GHCF_CE"
             )
 
         # The GNN only models BFI_PERCEPTION; everything else is causal
-        super(GHCF_Causal, self).__init__(
+        super(GHCF_CE, self).__init__(
             n_users=n_users,
             n_items=n_items,
             n_user_features=n_user_features,
