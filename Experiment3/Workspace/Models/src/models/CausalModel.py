@@ -1017,4 +1017,3 @@ class CausalModel:
             print(f"\nModel Type: {matrix_type} LinGAM")
 
         print("")
-

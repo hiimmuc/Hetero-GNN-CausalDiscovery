@@ -52,6 +52,7 @@ class GHCF(nn.Module):
         gnn_type: str = "gcn",
         n_heads: int = 4,
         device: str = "cpu",
+        bound_bfi_output: bool = True,
     ):
         """
         Initialize GHCF model.
@@ -68,6 +69,8 @@ class GHCF(nn.Module):
             gnn_type: Type of GNN layer ('gcn', 'sage', 'gat')
             n_heads: Number of attention heads (only used for 'gat')
             device: Device to run the model on
+            bound_bfi_output: Squash the BFI perception head through a sigmoid so
+                it stays in [0, 1] (the MinMax target / causal-input domain)
         """
         super(GHCF, self).__init__()
 
@@ -81,6 +84,7 @@ class GHCF(nn.Module):
         self.n_layers = len(layer_sizes)
         self.gnn_type = gnn_type
         self.device = device
+        self.bound_bfi_output = bound_bfi_output
 
         # Feature projection layers
         self.user_feature_proj = nn.Linear(n_user_features, embedding_dim)
@@ -371,6 +375,18 @@ class GHCF(nn.Module):
 
         return user_embeddings, item_embeddings, relation_embeddings
 
+    def _bound_output(self, interaction_type: str, prediction: torch.Tensor) -> torch.Tensor:
+        """Bound the BFI perception head to [0, 1] with a sigmoid.
+
+        BFI targets are MinMax-scaled to [0, 1], and the BFI prediction is the
+        input to the causal SEM head (whose rescaled BFI-TIPI difference assumes
+        BFI in [0, 1]). Squashing makes that invariant exact. The other heads
+        (RATING/VQ/SF are z-scored) live in an unbounded space and are left as-is.
+        """
+        if interaction_type == "BFI_PERCEPTION" and getattr(self, "bound_bfi_output", False):
+            return torch.sigmoid(prediction)
+        return prediction
+
     def predict_interaction(
         self,
         user_embeddings: torch.Tensor,
@@ -445,6 +461,7 @@ class GHCF(nn.Module):
 
             # Predict single component score
             graph_prediction = self.prediction_layers[interaction_type](combined_emb)
+            graph_prediction = self._bound_output(interaction_type, graph_prediction)
             return graph_prediction[:, component_idx : component_idx + 1]  # [batch_size, 1]
 
         else:
@@ -477,7 +494,7 @@ class GHCF(nn.Module):
             # Predict all component scores using graph model
             graph_prediction = self.prediction_layers[interaction_type](combined_emb)
 
-            return graph_prediction
+            return self._bound_output(interaction_type, graph_prediction)
 
     def predict(
         self,

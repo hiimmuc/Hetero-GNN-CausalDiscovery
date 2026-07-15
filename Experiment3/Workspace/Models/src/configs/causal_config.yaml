@@ -1,6 +1,6 @@
 # Causal Model Configuration
 data:
-    input_file: "./data/database_similarity.xlsx"
+    input_file: "./data/25/database_similarity.xlsx"
     output_dir: "./causal_outputs/"
 
 preprocessing:
@@ -66,5 +66,5 @@ evaluation:
     matrix_format: "npy" # Options: npy, csv
 
 inference:
-    model_path: "./causal_outputs_wo_norm/models/causal_model.npy"
+    model_path: "./causal_outputs/models/lingam_causal_model_robust_model_data.npy"
     enable_inference: true

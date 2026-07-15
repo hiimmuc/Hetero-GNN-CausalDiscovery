@@ -51,6 +51,8 @@ class GHCF_CE(GHCF, CausalMixin):
         use_causal: bool = True,
         causal_model_path: str = None,
         causal_config_path: str = None,
+        bound_bfi_output: bool = True,
+        trainable_sem: bool = True,
     ):
         """
         Initialize GHCF_CE model.
@@ -70,6 +72,10 @@ class GHCF_CE(GHCF, CausalMixin):
             use_causal: Whether to use causal prediction
             causal_model_path: Path to trained causal model
             causal_config_path: Path to causal model configuration
+            bound_bfi_output: Squash the BFI head to [0, 1] (the SEM input domain)
+            trainable_sem: Fine-tune the SEM coefficients during training (the
+                DAG mask is fixed either way); False freezes them at the
+                discovered LiNGAM values
         """
         # Store all interaction types for loss computation
         self.all_interaction_types = interaction_types.copy()
@@ -92,10 +98,13 @@ class GHCF_CE(GHCF, CausalMixin):
             gnn_type=gnn_type,
             n_heads=n_heads,
             device=device,
+            bound_bfi_output=bound_bfi_output,
         )
 
         # Initialize causal components from mixin
-        self.init_causal_components(use_causal, causal_model_path, causal_config_path)
+        self.init_causal_components(
+            use_causal, causal_model_path, causal_config_path, trainable_sem=trainable_sem
+        )
 
     def forward(
         self,
@@ -181,7 +190,21 @@ class GHCF_CE(GHCF, CausalMixin):
                 f"Causal prediction not available for interaction type: {interaction_type}"
             )
 
-        return causal_predictions[interaction_type]
+        causal_prediction = causal_predictions[interaction_type]
+        # Match the base head's single-component contract when a component is
+        # requested (mirrors GHCF_ACE); at runtime component_idx is always None.
+        if component_idx is not None:
+            causal_prediction = causal_prediction[:, component_idx : component_idx + 1]
+        return causal_prediction
+
+    def _shared_parameters(self) -> List[torch.Tensor]:
+        """GradNorm shared parameters: the GNN trunk plus the trainable SEM head.
+
+        Every non-BFI task's gradient flows through the SEM coefficients, so
+        they are a shared trunk GradNorm should balance across tasks (added only
+        when the head is trainable). The head is empty of parameters when frozen.
+        """
+        return super()._shared_parameters() + self.causal_trainable_parameters()
 
     def get_all_interaction_types(self) -> List[str]:
         """

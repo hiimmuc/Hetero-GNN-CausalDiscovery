@@ -116,6 +116,20 @@ class SEMHead(nn.Module):
             for v in range(n_features)
         }
 
+        # Reachability: a feature is "driven" if it is an exogenous input or has
+        # at least one driven parent. forward() emits constant zeros for any
+        # non-input feature with no (driven) parents, so an undriven output means
+        # its causal path was pruned away (e.g. by the robust-adjacency
+        # significance thresholding). Parents precede children in causal_order,
+        # so a single forward pass resolves reachability.
+        driven = [False] * n_features
+        for idx in self.input_indices:
+            driven[idx] = True
+        for v in self.causal_order:
+            if not driven[v] and any(driven[j] for j in self._parents[v]):
+                driven[v] = True
+        self._driven = driven
+
         # Normalization stats for the input features (z-score before propagation)
         input_mean = torch.zeros(len(self.input_indices))
         input_std = torch.ones(len(self.input_indices))
@@ -128,6 +142,24 @@ class SEMHead(nn.Module):
                 input_std[i] = float(stats.loc[name, "std"])
         self.register_buffer("input_mean", input_mean)
         self.register_buffer("input_std", input_std)
+
+    def n_output_components(self) -> int:
+        """Total number of predicted output components across interaction types."""
+        return sum(len(indices) for indices in self.interaction_indices.values())
+
+    def disconnected_outputs(self) -> List[str]:
+        """Names of predicted outputs with no causal path from the BFI-TIPI inputs.
+
+        forward() emits constant zeros for these, so a nonempty list means part
+        of the causal graph was pruned (commonly by robust-adjacency
+        thresholding). Returned as ``interaction_type:feature`` labels.
+        """
+        names: List[str] = []
+        for interaction_type, indices in self.interaction_indices.items():
+            for feat_idx in indices:
+                if not self._driven[feat_idx]:
+                    names.append(f"{interaction_type}:{self.features[feat_idx]}")
+        return names
 
     def forward(self, bfi_diff: torch.Tensor) -> Dict[str, torch.Tensor]:
         """

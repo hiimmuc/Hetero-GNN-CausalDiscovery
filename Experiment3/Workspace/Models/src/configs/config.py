@@ -7,8 +7,12 @@ from pathlib import Path
 import torch
 
 # Directory paths
-BASE_DIR = Path(__file__).parent.parent
-DATA_DIR = BASE_DIR / "data"
+# Repo layout: this file is <Models>/src/configs/config.py, so parents[2] is the
+# Models/ working directory that holds data/ and causal_outputs/. Anchoring to it
+# (absolute) makes the derived paths independent of the current working directory.
+BASE_DIR = Path(__file__).resolve().parents[2]
+SET = "35"  # Set to "25" for the 25-participant subset, or "35" for all participants
+DATA_DIR = BASE_DIR / "data" / SET
 DATA_INTERACTIONS_DIR = DATA_DIR / "interactions"
 
 # Data settings
@@ -105,7 +109,7 @@ MODEL_CONFIG = {
 
 # Training settings
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 32
+BATCH_SIZE = 16
 NUM_EPOCHS = 300  # 1000 → 300; early stopping handles real termination
 LEARNING_RATE = 0.001
 WEIGHT_DECAY = 1e-4  # 1e-5 → 1e-4; stronger L2 for small dataset
@@ -121,7 +125,7 @@ RATING_THRESHOLD = 0.0  # Threshold for positive ratings (after normalization)
 #   - "hybrid": MSE + BPR_LAMBDA * BPR pairwise ranking, so training also
 #               optimizes the item ordering that recall/nDCG@k evaluate while
 #               keeping rating magnitude (needed by the causal SEM head).
-LOSS_MODE = "mse"
+LOSS_MODE = "hybrid"
 BPR_LAMBDA = 1.0  # weight of the BPR ranking term in hybrid mode (tune)
 BPR_NUM_NEG = 1  # negatives sampled per positive rating for BPR
 
@@ -139,6 +143,19 @@ NORMALIZE_INTERACTIONS = True
 # Causal model settings (paths relative to the Models/ working directory)
 CAUSAL_MODEL_PATH = "causal_outputs/models/lingam_causal_model_robust_model_data.npy"
 CAUSAL_CONFIG_PATH = "src/configs/causal_config.yaml"
+
+# Whether the differentiable SEM head's coefficients are fine-tuned during
+# training. The DAG structure (mask) is always fixed; this only controls whether
+# the (masked) weights are learnable. Freezing (--freeze_sem) keeps them at the
+# discovered LiNGAM values so the causal head stays a pure structural prior.
+FREEZE_SEM = False
+
+# Squash the BFI perception head through a sigmoid so predictions stay in [0, 1].
+# BFI targets are MinMax-scaled to [0, 1] and the BFI prediction is the input to
+# the causal SEM head (whose rescaled BFI-TIPI difference assumes BFI in [0, 1]),
+# so bounding makes that invariant exact. RATING/VQ/SF heads are z-scored and
+# stay unbounded regardless.
+BOUND_BFI_OUTPUT = True
 
 # GHCF-ACE: how to combine the GNN head and the causal SEM head for the
 # non-BFI predictions (RATING / VOICE_QUALITY / SUBJECTIVE_FEELING):

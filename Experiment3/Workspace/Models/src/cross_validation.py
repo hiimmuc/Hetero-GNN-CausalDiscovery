@@ -11,6 +11,8 @@ from typing import Dict, List, Tuple
 import numpy as np
 from configs.config import (
     CAUSAL_MODEL_PATH,
+    DATA_DIR,
+    DATABASE_PATH,
     EVAL_INTERVAL,
     NORMALIZE_INTERACTIONS,
     NUM_EPOCHS,
@@ -149,9 +151,10 @@ class CrossValidationTrainer:
 
     def load_data(self) -> Tuple[Dict, Dict, Dict]:
         """Load dataset for cross-validation."""
-        data_path = Path("./data/database.xlsx")
+        data_path = DATABASE_PATH
         interactions_hash = "_".join(sorted(self.args.interactions))
-        processed_data_dir = Path(f"data/processed_{interactions_hash}")
+        # Scope the cache to the active data subset (SET) so 25/35 never collide.
+        processed_data_dir = DATA_DIR / f"processed_{interactions_hash}"
 
         if processed_data_dir.exists() and (processed_data_dir / "metadata.pkl").exists():
             print(f"Loading processed data for interactions: {self.args.interactions}")

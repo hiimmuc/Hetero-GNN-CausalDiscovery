@@ -140,50 +140,50 @@ class eHMIDataset(Dataset):
     def _split_train_test_by_user(self, df: pd.DataFrame) -> None:
         """Split data by taking last test_ratio of records for each user as test."""
         print(f"Splitting data by user (test ratio: {self.test_size})...")
-        
+
         self.train_df = []
         self.test_df = []
-        
+
         for user_id in df["Participant ID"].unique():
             user_data = df[df["Participant ID"] == user_id].copy()
-            
+
             # Sort by some order (you might want to add a timestamp column if available)
             # For now, we'll use the original order
             user_data = user_data.reset_index(drop=True)
-            
+
             n_interactions = len(user_data)
             n_test = int(n_interactions * self.test_size)
             if self.test_size > 0:
                 n_test = max(1, n_test)  # At least 1 test sample when splitting
             n_train = n_interactions - n_test
-            
+
             # Take last n_test records as test
             train_data = user_data.iloc[:n_train]
             test_data = user_data.iloc[n_train:]
-            
+
             self.train_df.append(train_data)
             self.test_df.append(test_data)
-            
+
             print(f"User {user_id}: {n_train} train, {n_test} test interactions")
-        
+
         # Combine all users
         self.train_df = pd.concat(self.train_df, ignore_index=True)
         self.test_df = pd.concat(self.test_df, ignore_index=True)
-        
+
         print(f"Total - Train: {len(self.train_df)}, Test: {len(self.test_df)}")
 
     def _process_split_data(self) -> None:
         """Process features and interactions for train and test sets separately."""
-        
+
         # Process node features (these will be the same for both sets)
         self._process_node_features_combined()
-        
+
         # Process interactions and adjacency matrices for train set
         print("\nProcessing training data...")
         self.train_interactions, self.train_adj_matrices = self._process_interactions_for_split(
             self.train_df, "train"
         )
-        
+
         # Process interactions for test set (no adjacency matrices needed for test)
         print("\nProcessing test data...")
         self.test_interactions, _ = self._process_interactions_for_split(
@@ -193,10 +193,10 @@ class eHMIDataset(Dataset):
     def _process_node_features_combined(self) -> None:
         """Process user and item features using complete dataset."""
         print("Processing node features...")
-        
+
         # Combine train and test for complete feature processing
         combined_df = pd.concat([self.train_df, self.test_df], ignore_index=True)
-        
+
         # Process user features
         user_df = combined_df[self.user_feature_cols].drop_duplicates()
         user_df = (
@@ -436,4 +436,3 @@ def load_processed_data(data_dir: str) -> Tuple[Dict[str, Any], Dict[str, Any], 
         metadata = pickle.load(f)
 
     return train_data, test_data, metadata
-

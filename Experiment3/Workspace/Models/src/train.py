@@ -14,11 +14,15 @@ import torch.optim as optim
 from configs.config import (
     ACE_FIXED_WEIGHTS,
     ACE_WEIGHT_MODE,
+    BOUND_BFI_OUTPUT,
     BPR_LAMBDA,
     BPR_NUM_NEG,
     CAUSAL_MODEL_PATH,
+    DATA_DIR,
+    DATABASE_PATH,
     DEVICE,
     EVAL_INTERVAL,
+    FREEZE_SEM,
     GRAPH_CONFIG,
     LOSS_MODE,
     NORMALIZE_INTERACTIONS,
@@ -121,9 +125,10 @@ class Trainer:
 
     def _setup_data(self) -> None:
         """Load or create dataset."""
-        data_path = Path("./data/database.xlsx")
+        data_path = DATABASE_PATH
         interactions_hash = "_".join(sorted(self.args.interactions))
-        processed_data_dir = Path(f"data/processed_{interactions_hash}")
+        # Scope the cache to the active data subset (SET) so 25/35 never collide.
+        processed_data_dir = DATA_DIR / f"processed_{interactions_hash}"
 
         if processed_data_dir.exists() and (processed_data_dir / "metadata.pkl").exists():
             print(f"Loading processed data for interactions: {self.args.interactions}")
@@ -190,6 +195,7 @@ class Trainer:
             gnn_type=getattr(self.args, "gnn_type", GRAPH_CONFIG["gnn_type"]),
             n_heads=getattr(self.args, "n_heads", GRAPH_CONFIG.get("n_heads", 4)),
             device=self.device,
+            bound_bfi_output=getattr(self.args, "bound_bfi", BOUND_BFI_OUTPUT),
         )
 
         if not self.args.causal and not use_ace:
@@ -205,6 +211,7 @@ class Trainer:
                 use_causal=True,
                 causal_model_path=causal_model_path,
                 causal_config_path=causal_config_path,
+                trainable_sem=not getattr(self.args, "freeze_sem", FREEZE_SEM),
             )
 
             if use_ace:
@@ -530,6 +537,9 @@ class Trainer:
                 "interaction_types": self.interaction_types,
                 "graph_config": GRAPH_CONFIG,
                 "use_gradnorm": self.gradnorm_handler is not None,
+                # Persist output-bounding so evaluate.py rebuilds an identical
+                # forward path (the sigmoid changes the BFI head's outputs).
+                "bound_bfi_output": getattr(self.model, "bound_bfi_output", BOUND_BFI_OUTPUT),
             },
             "best_metrics": self.best_metrics,
             "final_metrics": final_metrics,

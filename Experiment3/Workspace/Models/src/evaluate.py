@@ -12,8 +12,10 @@ import torch
 from configs.config import (
     ACE_FIXED_WEIGHTS,
     ACE_WEIGHT_MODE,
+    BOUND_BFI_OUTPUT,
     CAUSAL_CONFIG_PATH,
     CAUSAL_MODEL_PATH,
+    DATA_DIR,
     DEVICE,
     MODEL_CONFIG,
     RANDOM_SEED,
@@ -79,7 +81,7 @@ class Evaluator:
 
     def _get_processed_data_dir(self, interaction_types: List[str]) -> Path:
         """Determine the correct processed data directory based on interaction types."""
-        data_base_path = Path("data")
+        data_base_path = DATA_DIR
 
         # Try different directory naming patterns
         patterns = [
@@ -141,6 +143,8 @@ class Evaluator:
             gnn_type=model_config["graph_config"]["gnn_type"],
             n_heads=model_config["graph_config"].get("n_heads", 4),
             device=self.device,
+            # Match the training-time forward path (older runs default to config).
+            bound_bfi_output=model_config.get("bound_bfi_output", BOUND_BFI_OUTPUT),
         )
 
         if not self.args.causal and not use_ace:

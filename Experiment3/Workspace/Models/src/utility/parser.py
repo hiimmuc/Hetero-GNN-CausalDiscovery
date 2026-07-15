@@ -17,11 +17,13 @@ from configs.config import (
     ACE_WEIGHT_MODE,
     ADJ_TYPE,
     BATCH_SIZE,
+    BOUND_BFI_OUTPUT,
     CAUSAL_CONFIG_PATH,
     CAUSAL_MODEL_PATH,
     BPR_LAMBDA,
     CV_CONFIG,
     EARLY_STOP_PATIENCE,
+    FREEZE_SEM,
     GRAPH_CONFIG,
     LEARNING_RATE,
     LOSS_MODE,
@@ -114,6 +116,16 @@ def add_training_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--pretrain", type=int, default=0, help="Use pretrained model")
     parser.add_argument("--save_flag", type=int, default=1, help="Save model flag")
+    parser.add_argument(
+        "--bound_bfi",
+        action=argparse.BooleanOptionalAction,
+        default=BOUND_BFI_OUTPUT,
+        help=(
+            "Squash the BFI perception head to [0, 1] with a sigmoid so it matches "
+            "the MinMax BFI targets and the causal head's input domain. Use "
+            "--no-bound_bfi to leave it unbounded (the original linear head)."
+        ),
+    )
 
 
 def add_gradnorm_arguments(parser: argparse.ArgumentParser) -> None:
@@ -158,6 +170,16 @@ def add_causal_arguments(parser: argparse.ArgumentParser) -> None:
         type=float,
         default=None,
         help="GHCF-ACE fixed-mode causal weight applied to all non-BFI types (overrides config)",
+    )
+    parser.add_argument(
+        "--freeze_sem",
+        action=argparse.BooleanOptionalAction,
+        default=FREEZE_SEM,
+        help=(
+            "Freeze the causal SEM head coefficients at their discovered LiNGAM "
+            "values (the DAG mask is fixed either way). Default fine-tunes them; "
+            "use --freeze_sem to keep the causal head as a pure structural prior."
+        ),
     )
     parser.add_argument(
         "--causal_path",

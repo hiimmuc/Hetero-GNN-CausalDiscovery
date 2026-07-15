@@ -70,6 +70,8 @@ class GHCF_ACE(GHCF, CausalMixin):
         causal_config_path: str = None,
         ace_weight_mode: str = "learnable",
         ace_fixed_weights: Optional[Dict[str, Dict[str, float]]] = None,
+        bound_bfi_output: bool = True,
+        trainable_sem: bool = True,
     ):
         """
         Initialize GHCF_ACE model.
@@ -80,6 +82,9 @@ class GHCF_ACE(GHCF, CausalMixin):
             ace_fixed_weights: {interaction_type: {"w_mlp": .., "w_causal": ..}}
                 used only when ace_weight_mode == "fixed". Missing types default
                 to 0.5 / 0.5.
+            bound_bfi_output: Squash the BFI head to [0, 1] (the SEM input domain)
+            trainable_sem: Fine-tune the SEM coefficients during training (the
+                DAG mask is fixed either way); False freezes them.
             (other args as in GHCF.)
         """
         self.all_interaction_types = interaction_types.copy()
@@ -102,10 +107,13 @@ class GHCF_ACE(GHCF, CausalMixin):
             gnn_type=gnn_type,
             n_heads=n_heads,
             device=device,
+            bound_bfi_output=bound_bfi_output,
         )
 
         # Causal SEM head (same path as GHCF-CE)
-        self.init_causal_components(use_causal, causal_model_path, causal_config_path)
+        self.init_causal_components(
+            use_causal, causal_model_path, causal_config_path, trainable_sem=trainable_sem
+        )
 
         # Per-type GNN/causal mixing weights
         self._init_ace_weights(ace_weight_mode, ace_fixed_weights)
@@ -221,6 +229,17 @@ class GHCF_ACE(GHCF, CausalMixin):
         # Weighted ensemble of the two sources
         w_mlp, w_causal = self._ace_weights(interaction_type)
         return w_mlp * gnn_prediction + w_causal * causal_prediction
+
+    def _shared_parameters(self) -> List[torch.Tensor]:
+        """GradNorm shared parameters: the GNN trunk plus the trainable SEM head.
+
+        The SEM coefficients are shared across all non-BFI tasks, so GradNorm
+        balances task gradients through them (added only when trainable). The
+        per-type ACE gate logits are deliberately excluded: each gate receives
+        gradients from only its own task, so it is task-specific, not a shared
+        parameter GradNorm should equalize.
+        """
+        return super()._shared_parameters() + self.causal_trainable_parameters()
 
     def get_all_interaction_types(self) -> List[str]:
         """All interaction types this model can predict."""

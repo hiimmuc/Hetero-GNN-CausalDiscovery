@@ -99,6 +99,34 @@ class CausalMixin:
             f"trainable={trainable_sem})"
         )
 
+        # Guard against a robust-adjacency matrix that pruned the causal path.
+        # forward() would silently emit constant zeros for any disconnected
+        # output; surface that instead of training against dead targets.
+        disconnected = self.causal_head.disconnected_outputs()
+        if disconnected:
+            msg = (
+                f"causal SEM head has output(s) with no path from the BFI-TIPI "
+                f"inputs: {disconnected}. forward() predicts these as constant "
+                f"zero. This usually means the robust-adjacency significance "
+                f"threshold pruned too many edges; re-run run_causal_discovery.py "
+                f"with a lower threshold or point --causal_path at the non-robust "
+                f"model (*_model_data.npy without '_robust')."
+            )
+            if len(disconnected) == self.causal_head.n_output_components():
+                raise ValueError("Entire " + msg)
+            print("[causal][WARNING] Partial " + msg)
+
+    def causal_trainable_parameters(self) -> List[torch.Tensor]:
+        """Trainable parameters of the causal SEM head (the masked SEM weights).
+
+        These form the shared causal trunk for every non-BFI task, so GradNorm
+        should balance task gradients through them. Empty when the head is
+        frozen (its ``W`` is then a buffer, not a parameter) or absent.
+        """
+        if getattr(self, "causal_head", None) is None:
+            return []
+        return [p for p in self.causal_head.parameters() if p.requires_grad]
+
     def _compute_bfi_tipi_difference(
         self, bfi_predictions: torch.Tensor, user_features: torch.Tensor, user_ids: torch.Tensor
     ) -> torch.Tensor:
