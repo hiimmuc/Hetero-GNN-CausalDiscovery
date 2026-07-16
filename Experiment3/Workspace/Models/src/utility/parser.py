@@ -239,6 +239,16 @@ def add_cv_arguments(parser: argparse.ArgumentParser) -> None:
             "Note: the causal models require this enabled for consistent losses."
         ),
     )
+    parser.add_argument(
+        "--run_tag",
+        type=str,
+        default="",
+        help=(
+            "Optional tag prepended to the CV output directory name "
+            "(checkpoints/cv_{run_tag}_{timestamp}/) so parallel sweep runs "
+            "don't collide on second-resolution timestamps."
+        ),
+    )
 
 
 def parse_args() -> argparse.Namespace:
