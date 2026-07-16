@@ -193,13 +193,19 @@ def create_adjacency_matrix(
         d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
         adj_mat = d_mat_inv_sqrt.dot(adj_csr).dot(d_mat_inv_sqrt).tocsr()
     elif adj_type == "norm":  # symmetric normalization with self-loops
-        # Add self-loops and normalize
-        adj_mat = adj_mat + sp.eye(n_nodes)
-        rowsum = np.array(adj_mat.sum(axis=1)).flatten()
-        d_inv_sqrt = np.power(rowsum, -0.5)
-        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
+        # Add self-loops and normalize. Degree is taken from edge *structure*
+        # (count of nonzero entries per row), not the signed weight sum: RATING
+        # weights are z-scored and can be negative, so summing them can produce
+        # a negative row sum, and D^-1/2 of a negative number is NaN (unlike
+        # D^-1 in the 'mean' branch below, which stays finite for negative
+        # sums). Mirrors the 'pre' branch's fix for the same signed-weight issue.
+        adj_csr = (adj_mat + sp.eye(n_nodes)).tocsr()
+        degree = np.asarray((adj_csr != 0).sum(axis=1)).flatten()
+        d_inv_sqrt = np.zeros_like(degree, dtype=np.float32)
+        nz = degree > 0
+        d_inv_sqrt[nz] = np.power(degree[nz].astype(np.float32), -0.5)
         d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
-        adj_mat = d_mat_inv_sqrt.dot(adj_mat).dot(d_mat_inv_sqrt).tocsr()
+        adj_mat = d_mat_inv_sqrt.dot(adj_csr).dot(d_mat_inv_sqrt).tocsr()
     elif adj_type == "mean":
         # Add self-loops and normalize by mean
         adj_mat = adj_mat + sp.eye(n_nodes)
