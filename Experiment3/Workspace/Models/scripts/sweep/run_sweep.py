@@ -3,6 +3,7 @@ config across a worker pool, with a resumable JSONL manifest."""
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -42,16 +43,28 @@ def find_cv_dir(tag: str) -> str:
     return str(matches[-1]) if matches else ""
 
 
-def run_one(config: dict, log_dir: Path, manifest_path: Path) -> None:
+def run_one(config: dict, log_dir: Path, manifest_path: Path, threads_per_worker: int) -> None:
     tag = config["tag"]
     log_path = log_dir / f"{tag}.log"
     cmd = ["python", "src/main.py", "train"] + config["cli_args"]
+
+    # PyTorch defaults to an intra-op thread pool sized to the whole machine's
+    # core count *per process*. Running N of these concurrently oversubscribes
+    # the CPU by ~N x (e.g. 16 workers x 24 threads = 384 threads / 32 cores),
+    # which thrashes far worse than the GPU-side contention alone -- this is
+    # what turned a ~2x-worker / ~1x-slowdown ratio into a ~9x slowdown at 16
+    # workers. Capping each subprocess to its fair share of cores fixes it.
+    env = os.environ.copy()
+    for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        env[var] = str(threads_per_worker)
+
     start = time.time()
     with open(log_path, "w") as log_file:
         log_file.write(f"CMD: {' '.join(cmd)}\n\n")
+        log_file.write(f"THREADS_PER_WORKER: {threads_per_worker}\n\n")
         log_file.flush()
         proc = subprocess.run(
-            cmd, cwd=str(MODELS_DIR), stdout=log_file, stderr=subprocess.STDOUT
+            cmd, cwd=str(MODELS_DIR), stdout=log_file, stderr=subprocess.STDOUT, env=env
         )
     wall_time = time.time() - start
 
@@ -86,9 +99,13 @@ def run_one(config: dict, log_dir: Path, manifest_path: Path) -> None:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sweep_id", type=str, default=None, help="Resume an existing sweep dir name")
+    parser.add_argument(
+        "--sweep_id", type=str, default=None, help="Resume an existing sweep dir name"
+    )
     parser.add_argument("--workers", type=int, default=16)
-    parser.add_argument("--limit", type=int, default=None, help="Only run the first N configs (testing)")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Only run the first N configs (testing)"
+    )
     parser.add_argument("--dry_run", action="store_true")
     args = parser.parse_args()
 
@@ -111,13 +128,17 @@ def main():
 
     completed = load_completed_tags(manifest_path)
     pending = [c for c in grid if c["tag"] not in completed]
+    threads_per_worker = max(1, (os.cpu_count() or args.workers) // args.workers)
     print(f"Sweep dir: {sweep_dir}")
     print(f"Total: {len(grid)}  Already done: {len(completed)}  Pending: {len(pending)}")
+    print(f"Workers: {args.workers}  Threads/worker: {threads_per_worker}")
 
     from concurrent.futures import ThreadPoolExecutor
 
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = [pool.submit(run_one, c, log_dir, manifest_path) for c in pending]
+        futures = [
+            pool.submit(run_one, c, log_dir, manifest_path, threads_per_worker) for c in pending
+        ]
         for future in futures:
             future.result()
 
