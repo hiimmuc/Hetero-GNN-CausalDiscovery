@@ -15,6 +15,34 @@ from grid import build_grid
 
 MODELS_DIR = Path(__file__).resolve().parents[2]
 _manifest_lock = threading.Lock()
+MIN_FREE_MIB = 2000  # don't launch a new job onto a GPU with less free than this
+
+
+def _free_gpu_mib() -> int:
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, check=True,
+        )
+        return int(out.stdout.strip().splitlines()[0])
+    except Exception:
+        return MIN_FREE_MIB  # nvidia-smi unavailable: don't block the sweep on it
+
+
+def wait_for_gpu_memory(min_free_mib: int = MIN_FREE_MIB, poll_interval: int = 15) -> None:
+    """Block until the GPU has enough free memory to safely start a new job.
+
+    Prevents the exact failure mode observed in the first full-sweep attempt:
+    launching new jobs onto an already-crowded GPU (whether crowded by our own
+    workers or an unrelated tenant like a vLLM server) causes CUDA OOM crashes
+    for some jobs and multi-hour allocator-thrashing stalls for the rest.
+    """
+    waited = 0
+    while _free_gpu_mib() < min_free_mib:
+        if waited == 0:
+            print(f"  ...waiting for >= {min_free_mib}MiB free GPU memory")
+        time.sleep(poll_interval)
+        waited += poll_interval
 
 
 def load_completed_tags(manifest_path: Path) -> set:
@@ -47,6 +75,8 @@ def run_one(config: dict, log_dir: Path, manifest_path: Path, threads_per_worker
     tag = config["tag"]
     log_path = log_dir / f"{tag}.log"
     cmd = ["python", "src/main.py", "train"] + config["cli_args"]
+
+    wait_for_gpu_memory()
 
     # PyTorch defaults to an intra-op thread pool sized to the whole machine's
     # core count *per process*. Running N of these concurrently oversubscribes
