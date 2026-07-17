@@ -10,12 +10,54 @@ import threading
 import time
 from pathlib import Path
 
+from tqdm import tqdm
+
 sys.path.insert(0, str(Path(__file__).parent))
 from grid import build_grid
 
 MODELS_DIR = Path(__file__).resolve().parents[2]
 _manifest_lock = threading.Lock()
 MIN_FREE_MIB = 2000  # don't launch a new job onto a GPU with less free than this
+
+
+class SlotTracker:
+    """Tracks which config each worker slot is currently running, for the
+    live per-worker progress display."""
+
+    def __init__(self, workers: int):
+        self.free = list(range(workers))
+        self.active: dict = {}  # slot -> (tag, start_time)
+        self.lock = threading.Lock()
+
+    def acquire(self, tag: str) -> int:
+        with self.lock:
+            slot = self.free.pop()
+            self.active[slot] = (tag, time.time())
+            return slot
+
+    def release(self, slot: int) -> None:
+        with self.lock:
+            self.free.append(slot)
+            del self.active[slot]
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            return dict(self.active)
+
+
+def _tick_worker_bars(tracker: SlotTracker, bars: list, stop_event: threading.Event) -> None:
+    """Background thread: refreshes each worker's bar with its current tag
+    and running time (or 'idle') every couple seconds."""
+    while not stop_event.is_set():
+        snapshot = tracker.snapshot()
+        for slot, bar in enumerate(bars):
+            if slot in snapshot:
+                tag, start = snapshot[slot]
+                bar.set_description_str(f"[w{slot}] {tag} ({(time.time() - start) / 60:.1f}m)")
+            else:
+                bar.set_description_str(f"[w{slot}] idle")
+            bar.refresh()
+        stop_event.wait(2)
 
 
 def _free_gpu_mib() -> int:
@@ -40,7 +82,7 @@ def wait_for_gpu_memory(min_free_mib: int = MIN_FREE_MIB, poll_interval: int = 1
     waited = 0
     while _free_gpu_mib() < min_free_mib:
         if waited == 0:
-            print(f"  ...waiting for >= {min_free_mib}MiB free GPU memory")
+            tqdm.write(f"  ...waiting for >= {min_free_mib}MiB free GPU memory")
         time.sleep(poll_interval)
         waited += poll_interval
 
@@ -71,7 +113,14 @@ def find_cv_dir(tag: str) -> str:
     return str(matches[-1]) if matches else ""
 
 
-def run_one(config: dict, log_dir: Path, manifest_path: Path, threads_per_worker: int) -> None:
+def run_one(
+    config: dict,
+    log_dir: Path,
+    manifest_path: Path,
+    threads_per_worker: int,
+    tracker: SlotTracker,
+    overall_bar: tqdm,
+) -> None:
     tag = config["tag"]
     log_path = log_dir / f"{tag}.log"
     cmd = ["python", "src/main.py", "train"] + config["cli_args"]
@@ -88,15 +137,19 @@ def run_one(config: dict, log_dir: Path, manifest_path: Path, threads_per_worker
     for var in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
         env[var] = str(threads_per_worker)
 
-    start = time.time()
-    with open(log_path, "w") as log_file:
-        log_file.write(f"CMD: {' '.join(cmd)}\n\n")
-        log_file.write(f"THREADS_PER_WORKER: {threads_per_worker}\n\n")
-        log_file.flush()
-        proc = subprocess.run(
-            cmd, cwd=str(MODELS_DIR), stdout=log_file, stderr=subprocess.STDOUT, env=env
-        )
-    wall_time = time.time() - start
+    slot = tracker.acquire(tag)
+    try:
+        start = time.time()
+        with open(log_path, "w") as log_file:
+            log_file.write(f"CMD: {' '.join(cmd)}\n\n")
+            log_file.write(f"THREADS_PER_WORKER: {threads_per_worker}\n\n")
+            log_file.flush()
+            proc = subprocess.run(
+                cmd, cwd=str(MODELS_DIR), stdout=log_file, stderr=subprocess.STDOUT, env=env
+            )
+        wall_time = time.time() - start
+    finally:
+        tracker.release(slot)
 
     record = {k: v for k, v in config.items() if k != "cli_args"}
     cv_dir = find_cv_dir(tag)
@@ -107,7 +160,8 @@ def run_one(config: dict, log_dir: Path, manifest_path: Path, threads_per_worker
         record["mean_metrics"] = None
         record["std_metrics"] = None
         append_manifest(manifest_path, record)
-        print(f"[FAILED] {tag} (see {log_path})")
+        tqdm.write(f"[FAILED] {tag} (see {log_path})")
+        overall_bar.update(1)
         return
 
     results_path = Path(cv_dir) / "cv_results.json"
@@ -124,7 +178,8 @@ def run_one(config: dict, log_dir: Path, manifest_path: Path, threads_per_worker
         record["error"] = str(exc)
 
     append_manifest(manifest_path, record)
-    print(f"[{record['status'].upper()}] {tag} ({wall_time:.0f}s)")
+    tqdm.write(f"[{record['status'].upper()}] {tag} ({wall_time:.0f}s)")
+    overall_bar.update(1)
 
 
 def main():
@@ -165,12 +220,34 @@ def main():
 
     from concurrent.futures import ThreadPoolExecutor
 
-    with ThreadPoolExecutor(max_workers=args.workers) as pool:
-        futures = [
-            pool.submit(run_one, c, log_dir, manifest_path, threads_per_worker) for c in pending
-        ]
-        for future in futures:
-            future.result()
+    tracker = SlotTracker(args.workers)
+    overall_bar = tqdm(total=len(grid), initial=len(completed), position=0, desc="sweep", dynamic_ncols=True)
+    worker_bars = [
+        tqdm(total=0, position=i + 1, bar_format="{desc}", dynamic_ncols=True)
+        for i in range(args.workers)
+    ]
+    stop_ticker = threading.Event()
+    ticker = threading.Thread(
+        target=_tick_worker_bars, args=(tracker, worker_bars, stop_ticker), daemon=True
+    )
+    ticker.start()
+
+    try:
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            futures = [
+                pool.submit(
+                    run_one, c, log_dir, manifest_path, threads_per_worker, tracker, overall_bar
+                )
+                for c in pending
+            ]
+            for future in futures:
+                future.result()
+    finally:
+        stop_ticker.set()
+        ticker.join(timeout=5)
+        for bar in worker_bars:
+            bar.close()
+        overall_bar.close()
 
     print("Sweep complete.")
 

@@ -34,10 +34,13 @@ GNN_TYPES = ["gcn", "sage", "gat"]
 
 CV_COMMON_ARGS = [
     "--cv",
-    "--n_folds", "5",
+    "--n_folds",
+    "5",
     "--stratified",
-    "--cv_epochs", "500",
-    "--patience", "50",
+    "--cv_epochs",
+    "500",
+    "--patience",
+    "50",
 ]
 
 
@@ -69,8 +72,13 @@ def _causal_cli_args(causal_mode: str, freeze_sem: Optional[bool]) -> List[str]:
     else:
         w_mlp, w_causal = ACE_FIXED_SPLITS[causal_mode]
         args = [
-            "--ace", "--ace_weight_mode", "fixed",
-            "--ace_w_mlp", str(w_mlp), "--ace_w_causal", str(w_causal),
+            "--ace",
+            "--ace_weight_mode",
+            "fixed",
+            "--ace_w_mlp",
+            str(w_mlp),
+            "--ace_w_causal",
+            str(w_causal),
         ]
     args.append("--freeze_sem" if freeze_sem else "--no-freeze_sem")
     return args
@@ -96,29 +104,45 @@ def build_grid() -> List[Dict]:
                         for adj_type in ADJ_TYPES:
                             for gnn_type in GNN_TYPES:
                                 tag = _tag(
-                                    interaction_set, causal_mode, bound_bfi,
-                                    freeze_sem, loss, adj_type, gnn_type,
+                                    interaction_set,
+                                    causal_mode,
+                                    bound_bfi,
+                                    freeze_sem,
+                                    loss,
+                                    adj_type,
+                                    gnn_type,
                                 )
                                 cli_args = (
                                     ["--interactions", *interactions]
                                     + CV_COMMON_ARGS
-                                    + ["--loss", loss, "--adj_type", adj_type, "--gnn_type", gnn_type]
+                                    + [
+                                        "--loss",
+                                        loss,
+                                        "--adj_type",
+                                        adj_type,
+                                        "--gnn_type",
+                                        gnn_type,
+                                    ]
                                     + _causal_cli_args(causal_mode, freeze_sem)
                                     + ["--run_tag", tag]
                                 )
                                 if bound_bfi is not None:
-                                    cli_args.append("--bound_bfi" if bound_bfi else "--no-bound_bfi")
-                                grid.append({
-                                    "tag": tag,
-                                    "interaction_set": interaction_set,
-                                    "causal_mode": causal_mode,
-                                    "bound_bfi": bound_bfi,
-                                    "freeze_sem": freeze_sem,
-                                    "loss": loss,
-                                    "adj_type": adj_type,
-                                    "gnn_type": gnn_type,
-                                    "cli_args": cli_args,
-                                })
+                                    cli_args.append(
+                                        "--bound_bfi" if bound_bfi else "--no-bound_bfi"
+                                    )
+                                grid.append(
+                                    {
+                                        "tag": tag,
+                                        "interaction_set": interaction_set,
+                                        "causal_mode": causal_mode,
+                                        "bound_bfi": bound_bfi,
+                                        "freeze_sem": freeze_sem,
+                                        "loss": loss,
+                                        "adj_type": adj_type,
+                                        "gnn_type": gnn_type,
+                                        "cli_args": cli_args,
+                                    }
+                                )
     return grid
 
 

@@ -75,7 +75,7 @@ INTERACTION_TYPES = {
 # to avoid overfitting: single GNN layer, 32-dim embeddings, strong dropout.
 GRAPH_CONFIG = {
     "embedding_dim": 32,  # 64 → 32; 80 nodes × 32 dims is already expressive
-    "layer_sizes": [32],  # two 64-layers → single 32-layer (less capacity, less overfit)
+    "layer_sizes": [32],  # two 64-layers → single 32-layer (less capacity, less over-fit)
     "dropout_rates": [0.4],  # 0.1 → 0.4; stronger regularization for small data
     "gnn_type": "gcn",  # Type of GNN layer ('gcn', 'sage', 'gat')
     "n_heads": 4,  # Number of attention heads (only used for 'gat')
@@ -101,7 +101,7 @@ BATCH_SIZE = 16
 NUM_EPOCHS = 300  # 1000 → 300; early stopping handles real termination
 LEARNING_RATE = 0.001
 WEIGHT_DECAY = 1e-4  # 1e-5 → 1e-4; stronger L2 for small dataset
-EARLY_STOP_PATIENCE = 50  # 100 → 50; small data converges (or overfits) fast
+EARLY_STOP_PATIENCE = 20  # 100 → 50; small data converges (or overfits) fast
 EVAL_INTERVAL = 10  # Evaluate on the test set every N epochs
 RANDOM_SEED = 42
 TEST_SIZE = 0.2
