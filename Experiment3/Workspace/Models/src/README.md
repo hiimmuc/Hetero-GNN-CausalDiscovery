@@ -154,7 +154,6 @@ Selected `train` arguments:
 | `--causal_path` | `CAUSAL_MODEL_PATH` | Path to the fitted causal model artifact. |
 | `--causal_config` | `CAUSAL_CONFIG_PATH` | Path to the causal YAML config. |
 | `--normalize_interactions` | `NORMALIZE_INTERACTIONS` | Toggle target normalization (`--no-normalize_interactions` disables). |
-| `--save_flag` | `1` | Save checkpoints. |
 
 ### Cross-Validation
 
@@ -190,7 +189,6 @@ python src/main.py evaluate --model_dir <dir> --k_values "[3,5,10]"
 | `--model_dir` | required | Directory containing the trained model. |
 | `--checkpoint` | `best_state.pth` | `best_state.pth` or `last_state.pth`. |
 | `--k_values` | `[3,5,10]` | Top-K cutoffs for ranking metrics. |
-| `--test_flag` | `part` | `part` or `full` test evaluation. |
 
 ### Causal Discovery
 

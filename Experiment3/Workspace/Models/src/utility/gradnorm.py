@@ -188,56 +188,6 @@ class GradNorm:
         """Get current task weights."""
         return self.task_weights.copy()
 
-    def get_weights_tensor(self) -> torch.Tensor:
-        """Get current weights as tensor."""
-        return self.task_weight_tensor.detach().clone()
-
-    def reset(self):
-        """Reset GradNorm state."""
-        self.initial_losses = None
-        self.step_count = 0
-        with torch.no_grad():
-            self.task_weight_tensor.fill_(1.0)
-        self.task_weights = {task: 1.0 for task in self.task_names}
-
-    def compute_weighted_loss(
-        self, task_losses: Dict[str, torch.Tensor], shared_parameters: List[nn.Parameter] = None
-    ) -> torch.Tensor:
-        """
-        Compute weighted loss using current task weights and optionally update weights.
-
-        Args:
-            task_losses: Dictionary of task losses {task_name: loss_tensor}
-            shared_parameters: Optional list of shared model parameters for GradNorm updates
-
-        Returns:
-            Total weighted loss
-        """
-        # Update weights using GradNorm if we have enough history and shared parameters
-        if (
-            self.initial_losses is not None
-            and self.step_count > 0
-            and shared_parameters is not None
-            and len(shared_parameters) > 0
-        ):
-            try:
-                updated_weights = self.compute_gradnorm_weights(shared_parameters, task_losses)
-                self.task_weights.update(updated_weights)
-            except (RuntimeError, AttributeError, TypeError) as e:
-                # Fall back to current weights if gradient computation fails
-                print(f"GradNorm weight update failed: {e}. Using current weights.")
-                pass
-
-        # Compute weighted total loss
-        total_loss = torch.tensor(0.0, device=self.device, requires_grad=True)
-        for task, loss in task_losses.items():
-            if task in self.task_weights:
-                total_loss = total_loss + self.task_weights[task] * loss
-            else:
-                total_loss = total_loss + loss  # Default weight of 1.0
-
-        return total_loss
-
 
 def compute_weighted_loss(
     individual_losses: Dict[str, torch.Tensor],

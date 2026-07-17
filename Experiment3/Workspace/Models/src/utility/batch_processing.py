@@ -2,7 +2,6 @@
 Batch processing utilities for evaluation and training.
 """
 
-import multiprocessing
 from typing import Dict, List
 
 import numpy as np
@@ -23,7 +22,7 @@ class BatchProcessor:
     Handles batch processing for training and evaluation.
     """
 
-    def __init__(self, n_users: int, n_items: int, batch_size: int = 64, num_workers: int = None):
+    def __init__(self, n_users: int, n_items: int, batch_size: int = 64):
         """
         Initialize batch processor.
 
@@ -31,12 +30,10 @@ class BatchProcessor:
             n_users: Number of users
             n_items: Number of items
             batch_size: Batch size for processing
-            num_workers: Number of workers for multiprocessing
         """
         self.n_users = n_users
         self.n_items = n_items
         self.batch_size = batch_size
-        self.num_workers = num_workers or min(4, multiprocessing.cpu_count())
 
     def create_training_batches(
         self, interactions: Dict[str, np.ndarray], batch_size: int = None

@@ -65,10 +65,6 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         default=["RATING", "BFI_PERCEPTION", "VOICE_QUALITY", "SUBJECTIVE_FEELING"],
         help="Interaction types to use",
     )
-    parser.add_argument("--verbose", type=int, default=1, help="Verbose output")
-    parser.add_argument("--gpu_id", type=int, default=0, help="GPU ID to use")
-
-
 def add_training_arguments(parser: argparse.ArgumentParser) -> None:
     """Add training-related arguments (defaults from configs/config.py)."""
     parser.add_argument("--lr", type=float, default=LEARNING_RATE, help="Learning rate")
@@ -115,7 +111,6 @@ def add_training_arguments(parser: argparse.ArgumentParser) -> None:
         help="Number of attention heads (only used when --gnn_type gat)",
     )
     parser.add_argument("--pretrain", type=int, default=0, help="Use pretrained model")
-    parser.add_argument("--save_flag", type=int, default=1, help="Save model flag")
     parser.add_argument(
         "--bound_bfi",
         action=argparse.BooleanOptionalAction,
@@ -199,13 +194,6 @@ def add_evaluation_arguments(parser: argparse.ArgumentParser) -> None:
     """Add evaluation-related arguments."""
     parser.add_argument(
         "--k_values", type=str, default="[3,5,10]", help="Top-K values for evaluation"
-    )
-    parser.add_argument(
-        "--test_flag",
-        type=str,
-        default="part",
-        choices=["part", "full"],
-        help="Test evaluation mode",
     )
 
 

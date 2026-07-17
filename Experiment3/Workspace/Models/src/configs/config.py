@@ -29,15 +29,6 @@ TIPI_SCALE = (1, 14)  # TIPI scale range
 BFI_COLS = ["BFI-O", "BFI-C", "BFI-E", "BFI-A", "BFI-N"]  # BFI personality traits (1-10 scale)
 BFI_SCALE = (1, 10)  # BFI scale range
 
-LABEL_COLS = [
-    "Label-O",
-    "Label-C",
-    "Label-E",
-    "Label-A",
-    "Label-N",
-]  # Labels for BFI traits (0-1 scale)
-LABEL_SCALE = (0, 1)  # Label scale range
-
 MOS_X2_COLS = [
     "MOS-X2 Q1",
     "MOS-X2 Q2",
@@ -96,15 +87,12 @@ GRAPH_CONFIG = {
     },
     "use_gradnorm": False,  # Whether to use GradNorm for dynamic weight balancing
     "gradnorm_alpha": 1.5,  # GradNorm restoring force hyperparameter (typically 0.12-3.0)
-    "gradnorm_update_freq": 1,  # How often to update GradNorm weights (every N steps)
 }
 
 # Model architecture settings
 MODEL_CONFIG = {
     "user_feature_dim": len(USER_FEATURES) - 1,  # Gender (1) + TIPI scores (5)
     "item_feature_dim": len(ITEM_FEATURES) - 1,  # Gender, Content Type, Character (encoded)
-    "normalize_features": True,
-    "feature_norm_method": "mixed",  # 'mixed', 'minmax', or 'zscore'
 }
 
 # Training settings
@@ -130,7 +118,7 @@ BPR_LAMBDA = 1.0  # weight of the BPR ranking term in hybrid mode (tune)
 BPR_NUM_NEG = 1  # negatives sampled per positive rating for BPR
 
 # Whether to normalize interaction *targets*. Decoupled from feature
-# normalization (MODEL_CONFIG["normalize_features"]) on purpose:
+# normalization (utility.dataloader always applies it via normalize_features) on purpose:
 #   - BFI_PERCEPTION: MinMax to [0, 1] (BFI scale)
 #   - RATING / VOICE_QUALITY / SUBJECTIVE_FEELING: z-scored with the causal
 #     model's normalization_stats.csv when available, so the targets share the
