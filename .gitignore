@@ -204,6 +204,7 @@ __marimo__/
 .vscode/
 
 Archive/
+archive/
 Docs/
 Experiment3/Workspace/Models/src/checkpoints/
 Experiment3/Workspace/Models/checkpoints/
