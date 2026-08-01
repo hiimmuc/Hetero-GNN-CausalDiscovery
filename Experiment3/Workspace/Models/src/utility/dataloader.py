@@ -15,6 +15,7 @@ try:
     from helper import (
         create_adjacency_matrix,
         encode_categorical_features,
+        minmax_scale,
         normalize_features,
         sparse_mx_to_torch_sparse_tensor,
     )
@@ -22,6 +23,7 @@ except Exception:
     from utility.helper import (
         create_adjacency_matrix,
         encode_categorical_features,
+        minmax_scale,
         normalize_features,
         sparse_mx_to_torch_sparse_tensor,
     )
@@ -221,7 +223,6 @@ class eHMIDataset(Dataset):
         self.user_features = normalize_features(
             user_features,
             feature_names,
-            method="mixed",
             tipi_scale=TIPI_SCALE,
             bfi_scale=BFI_SCALE,
             print_stats=True,
@@ -327,7 +328,7 @@ class eHMIDataset(Dataset):
 
                 if interaction_type in ["BFI_PERCEPTION"]:
                     min_val, max_val = BFI_SCALE
-                    normalized_values = (interaction_values - min_val) / (max_val - min_val)
+                    normalized_values = minmax_scale(interaction_values, min_val, max_val)
                     norm_method = f"MinMax with BFI scale [{min_val}, {max_val}]"
                 elif interaction_type in ["VOICE_QUALITY", "SUBJECTIVE_FEELING", "RATING"]:
                     normalized_values, norm_method = self._zscore_interaction(

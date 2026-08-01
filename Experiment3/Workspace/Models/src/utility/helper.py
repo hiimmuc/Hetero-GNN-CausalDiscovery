@@ -29,35 +29,20 @@ def set_seed(seed: int = 42) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-def normalize(features: np.ndarray, method: str = "minmax") -> np.ndarray:
+def minmax_scale(values, scale_min: float, scale_max: float):
+    """Rescale ``values`` from a fixed [scale_min, scale_max] range to [0, 1].
+
+    Unlike a distribution-based MinMax normalizer, the bounds are the
+    questionnaire's declared range (e.g. BFI_SCALE, TIPI_SCALE), not
+    ``values.min()``/``values.max()``. Works on numpy arrays and pandas
+    Series alike.
     """
-    Normalize features using specified method.
-
-    Args:
-        features: Feature matrix to normalize
-        method: Normalization method ('minmax', 'zscore')
-
-    Returns:
-        Normalized feature matrix
-    """
-    if method == "minmax":
-        min_val = features.min(axis=0, keepdims=True)
-        max_val = features.max(axis=0, keepdims=True)
-        normalized = (features - min_val) / (max_val - min_val + 1e-8)
-    elif method == "zscore":
-        mean_val = features.mean(axis=0, keepdims=True)
-        std_val = features.std(axis=0, keepdims=True)
-        normalized = (features - mean_val) / (std_val + 1e-8)
-    else:
-        raise ValueError(f"Unknown normalization method: {method}")
-
-    return normalized
+    return (values - scale_min) / (scale_max - scale_min)
 
 
 def normalize_features(
     features: np.ndarray,
     feature_names: List[str] = None,
-    method: str = "mixed",
     tipi_scale: Tuple[float, float] = (1, 14),
     bfi_scale: Tuple[float, float] = (1, 10),
     print_stats: bool = True,
@@ -68,7 +53,6 @@ def normalize_features(
     Args:
         features: Feature matrix [n_samples, n_features]
         feature_names: List of feature names
-        method: Normalization method ('mixed', 'minmax', 'zscore')
         tipi_scale: Scale range for TIPI features
         bfi_scale: Scale range for BFI features
         print_stats: Whether to print normalization statistics
@@ -76,10 +60,6 @@ def normalize_features(
     Returns:
         Normalized feature matrix
     """
-    if method != "mixed":
-        # Use original normalization for non-mixed methods
-        return normalize(features, method)
-
     normalized_features = features.copy()
 
     if print_stats:
@@ -97,7 +77,7 @@ def normalize_features(
         ):
             # TIPI features: MinMax with (1, 14) scale
             min_val, max_val = tipi_scale
-            normalized_values = (feature_values - min_val) / (max_val - min_val)
+            normalized_values = minmax_scale(feature_values, min_val, max_val)
             norm_method = f"MinMax [{min_val}, {max_val}]"
 
         elif any(
@@ -105,7 +85,7 @@ def normalize_features(
         ):
             # BFI features: MinMax with (1, 10) scale
             min_val, max_val = bfi_scale
-            normalized_values = (feature_values - min_val) / (max_val - min_val)
+            normalized_values = minmax_scale(feature_values, min_val, max_val)
             norm_method = f"MinMax [{min_val}, {max_val}]"
 
         elif any(

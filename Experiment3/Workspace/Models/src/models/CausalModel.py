@@ -202,9 +202,12 @@ class CausalModel:
         Returns:
             The dataframe with the difference columns overwritten in place.
         """
+        from configs.config import BFI_SCALE, TIPI_SCALE
+        from utility.helper import minmax_scale
+
         cfg = self.config["preprocessing"]
-        bfi_min, bfi_max = cfg.get("bfi_scale", [1, 10])
-        tipi_min, tipi_max = cfg.get("tipi_scale", [1, 14])
+        bfi_min, bfi_max = cfg.get("bfi_scale", list(BFI_SCALE))
+        tipi_min, tipi_max = cfg.get("tipi_scale", list(TIPI_SCALE))
         input_feats = self.config["features"]["input_features"]
 
         recomputed = []
@@ -217,8 +220,8 @@ class CausalModel:
                     f"keeping the original column"
                 )
                 continue
-            bfi_scaled = (df[bfi_col] - bfi_min) / (bfi_max - bfi_min)
-            tipi_scaled = (df[tipi_col] - tipi_min) / (tipi_max - tipi_min)
+            bfi_scaled = minmax_scale(df[bfi_col], bfi_min, bfi_max)
+            tipi_scaled = minmax_scale(df[tipi_col], tipi_min, tipi_max)
             df[feat] = bfi_scaled - tipi_scaled
             recomputed.append(feat)
 
