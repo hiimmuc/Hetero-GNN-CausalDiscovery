@@ -16,8 +16,10 @@ Experiment3/
 │   ├── 2025_Nam_eHMI-Voices-Contents/ # eHMI voice stimuli and design materials
 │   └── DATA/                          # Raw collected experimental data
 └── Workspace/                         # Analysis, processing, and modeling tools
+    ├── EDA/                           # Exploratory analysis of the raw DATA/
     ├── ExpDataAnalyze/                # Data preprocessing and statistical analysis
     ├── FeatureProcessing/             # Audio feature extraction and analysis
+    ├── FeatureEngineering/            # Builds the Models-ready database files
     ├── Models/                        # GHCF recommender + causal discovery
     └── Docs/                          # Documentation and research materials
 ```
@@ -32,6 +34,16 @@ Materials and raw data from running the study.
   per-trial measurements).
 
 ## Workspace
+
+### EDA/
+
+Exploratory analysis of the raw `Experiments/DATA/` (participants, condition
+assignment, eHMI metadata, questionnaire responses) — data quality, exclusion
+audit, and distribution checks on the inputs `FeatureEngineering/` consumes.
+
+- `eda.ipynb` — the main narrative notebook.
+- `eda_utils.py` — loading/plotting helpers reused by the notebook.
+- `output/` — generated figures and summary tables.
 
 ### ExpDataAnalyze/
 
@@ -51,6 +63,26 @@ Audio feature extraction from the voice stimuli.
 - `feature_extraction_emb.py` — deep-learning audio embeddings.
 - `feat_extract.ipynb` — runs and inspects feature extraction.
 - `feat_analyze.ipynb` — feature analysis and modeling.
+
+### FeatureEngineering/
+
+Builds the two Models-ready files, `database.xlsx` and
+`database_similarity.xlsx`, directly from raw `Experiments/DATA/` (participant
+TIPI/BFI, condition assignment, eHMI metadata + audio labels, questionnaire
+responses), for both dataset variants (`SET = "35"` or `"25"` in
+`Models/src/configs/config.py`).
+
+- `feature_engineering.py` — the full pipeline: joins each response row to its
+  eHMI condition explicitly via `(TestID, Interaction) -> Condition.xlsx`
+  (rather than assuming response and metadata rows line up positionally, as
+  the older `ExpDataAnalyze/preprocess_data.py` did), drops the raw
+  audio-acoustic columns nothing downstream reads, and adds the BFI-TIPI-Label
+  similarity/difference features the causal-discovery pipeline needs.
+- Run with `python feature_engineering.py` from this directory; it writes
+  straight into `Models/data/35/` and `Models/data/25/`. Re-run it whenever
+  the raw `Experiments/DATA/` changes — note this also invalidates any
+  `Models/data/<SET>/processed_*/` tensor cache, which must be deleted so the
+  next training run rebuilds from the new database.
 
 ### Models/
 
