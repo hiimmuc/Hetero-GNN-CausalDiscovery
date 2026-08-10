@@ -1,7 +1,7 @@
 """Loading and plotting helpers for the Experiments/DATA/ exploratory analysis.
 
-Mirrors the loading conventions of ../ExpDataAnalyze/preprocess_data.py, but loads
-every raw file (including the participants preprocess_data.py excludes from the
+Mirrors the loading conventions of the archived Archive/ExpDataAnalyze/preprocess_data.py,
+but loads every raw file (including the participants that script excludes from the
 modeling pipeline) so the EDA can audit that exclusion decision instead of assuming it.
 """
 
@@ -29,8 +29,8 @@ def load_condition() -> pd.DataFrame:
 
 
 def load_ehmi() -> pd.DataFrame:
-    """eHMI.xlsx: the 51 eHMI condition codes (50 experimental + 99.T control) and their metadata."""
-    return pd.read_excel(DATA_DIR / "Metadata" / "eHMI.xlsx")
+    """eHMI_metadata_short.xlsx: the 51 eHMI condition codes (50 experimental + 99.T control) and their metadata."""
+    return pd.read_excel(DATA_DIR / "Metadata" / "eHMI_metadata_short.xlsx")
 
 
 def load_all_responses() -> dict[str, pd.DataFrame]:

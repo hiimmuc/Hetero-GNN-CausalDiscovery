@@ -17,10 +17,9 @@ Experiment3/
 │   └── DATA/                          # Raw collected experimental data
 └── Workspace/                         # Analysis, processing, and modeling tools
     ├── EDA/                           # Exploratory analysis of the raw DATA/
-    ├── ExpDataAnalyze/                # Data preprocessing and statistical analysis
-    ├── FeatureProcessing/             # Audio feature extraction and analysis
     ├── FeatureEngineering/            # Builds the Models-ready database files
     ├── Models/                        # GHCF recommender + causal discovery
+    ├── Archive/                       # Superseded preprocessing/feature-extraction work
     └── Docs/                          # Documentation and research materials
 ```
 
@@ -45,25 +44,6 @@ audit, and distribution checks on the inputs `FeatureEngineering/` consumes.
 - `eda_utils.py` — loading/plotting helpers reused by the notebook.
 - `output/` — generated figures and summary tables.
 
-### ExpDataAnalyze/
-
-Data preprocessing and statistical analysis of the collected responses.
-
-- `preprocess_data.py` — data cleaning and preprocessing.
-- `dataProcessing.ipynb` — exploratory analysis and visualization.
-- Data is organized by experimental phase (for example `data/`, `data_25/`).
-- Outputs are statistical-analysis results and figures.
-
-### FeatureProcessing/
-
-Audio feature extraction from the voice stimuli.
-
-- `feature_extraction_mfcc.py` — Mel-frequency cepstral coefficients (MFCC).
-- `feature_extraction_mel.py` — Mel spectrogram features.
-- `feature_extraction_emb.py` — deep-learning audio embeddings.
-- `feat_extract.ipynb` — runs and inspects feature extraction.
-- `feat_analyze.ipynb` — feature analysis and modeling.
-
 ### FeatureEngineering/
 
 Builds the two Models-ready files, `database.xlsx` and
@@ -75,7 +55,7 @@ responses), for both dataset variants (`SET = "35"` or `"25"` in
 - `feature_engineering.py` — the full pipeline: joins each response row to its
   eHMI condition explicitly via `(TestID, Interaction) -> Condition.xlsx`
   (rather than assuming response and metadata rows line up positionally, as
-  the older `ExpDataAnalyze/preprocess_data.py` did), drops the raw
+  the archived `Archive/ExpDataAnalyze/preprocess_data.py` did), drops the raw
   audio-acoustic columns nothing downstream reads, and adds the BFI-TIPI-Label
   similarity/difference features the causal-discovery pipeline needs.
 - Run with `python feature_engineering.py` from this directory; it writes
@@ -100,6 +80,22 @@ See `Workspace/Models/src/README.md` for full details.
   cached tensors), `checkpoints/` (trained models and logs),
   `causal_outputs/` (causal artifacts and figures), and `archive/` (legacy data
   and the original GHCF reference implementation).
+
+### Archive/
+
+Superseded preprocessing and audio-feature-extraction work, kept for
+reference only — nothing here is read by `EDA/`, `FeatureEngineering/`, or
+`Models/src`.
+
+- **`ExpDataAnalyze/`** — the original `preprocess_data.py`/`dataProcessing.ipynb`
+  pipeline that `FeatureEngineering/feature_engineering.py` now replaces (it
+  joined response rows to conditions positionally rather than by key), plus
+  downstream statistical analysis (ANOVA, LinGAM, regression) of the resulting
+  database that duplicates or predates `Models/`'s causal-discovery stage.
+- **`FeatureProcessing/`** — the MFCC/mel-spectrogram/embedding audio-feature
+  extraction and the Big-5-label modeling that produced the `Label-*` columns
+  now already baked into `Experiments/DATA/Metadata/eHMI_metadata_*.xlsx`.
+  Re-run this only if the label-generation step itself needs to change.
 
 ### Docs/
 

@@ -1,13 +1,14 @@
 """Builds the Models-ready database.xlsx / database_similarity.xlsx files from raw
 Experiments/DATA/.
 
-Consolidates what ExpDataAnalyze/preprocess_data.py and the precomputed audio
-features in FeatureProcessing/ produce, but joins participant response rows to
-their eHMI condition explicitly via (TestID, Interaction) -> Condition.xlsx,
-instead of assuming response rows and metadata rows line up positionally.
-Audio-acoustic columns (formants, pitch, intensity, ...) are dropped: nothing
-in Models/src reads them, only eHMI Gender/Content Type/Character and the
-Label-* trait-intensity scores are consumed downstream.
+Consolidates what the archived Archive/ExpDataAnalyze/preprocess_data.py and the
+precomputed audio features in Archive/FeatureProcessing/ produce, but joins
+participant response rows to their eHMI condition explicitly via
+(TestID, Interaction) -> Condition.xlsx, instead of assuming response rows and
+metadata rows line up positionally. Audio-acoustic columns (formants, pitch,
+intensity, ...) are dropped: nothing in Models/src reads them, only eHMI
+Gender/Content Type/Character and the Label-* trait-intensity scores are
+consumed downstream.
 """
 
 import warnings
@@ -102,7 +103,6 @@ def build_database(testids, participants, condition, ehmi_lookup, responses) -> 
     via (TestID, Interaction) -> Condition.xlsx -> eHMI metadata."""
     mos_cols = [f"MOS-X2 Q{i}" for i in range(1, 5)]
     bfi_cols = [f"BFI-{t}" for t in TRAITS]
-    sq_cols = [f"SQ {i}" for i in range(1, 6)]
 
     rows = []
     for testid in testids:

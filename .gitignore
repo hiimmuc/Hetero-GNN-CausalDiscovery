@@ -210,8 +210,6 @@ Experiment3/Workspace/Models/src/checkpoints/
 Experiment3/Workspace/Models/checkpoints/
 # Experiment3/Workspace/Models/data/*
 Experiment3/Workspace/Models/output/
-Experiment3/Workspace/ExpDataAnalyze
-Experiment3/Workspace/FeatureProcessing
 VoiceGeneration/generated/
 
 *.npy
