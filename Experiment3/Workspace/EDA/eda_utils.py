@@ -15,7 +15,7 @@ DATA_DIR = Path(__file__).resolve().parent.parent.parent / "Experiments" / "DATA
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 
 # Response files preprocess_data.py drops when building the model's database.xlsx.
-EXCLUDED_FROM_MODEL = ["C3", "C15", "C25", "C30", "C31"]
+EXCLUDED_FROM_MODEL = []  # "C3", "C15", "C25", "C30", "C31"
 
 
 def load_participants() -> pd.DataFrame:
@@ -61,10 +61,9 @@ def missingness_report(df: pd.DataFrame) -> pd.DataFrame:
     """Per-column NaN count and percentage, sorted worst-first."""
     n = len(df)
     counts = df.isna().sum()
-    return (
-        pd.DataFrame({"n_missing": counts, "pct_missing": (counts / n * 100).round(2)})
-        .sort_values("pct_missing", ascending=False)
-    )
+    return pd.DataFrame(
+        {"n_missing": counts, "pct_missing": (counts / n * 100).round(2)}
+    ).sort_values("pct_missing", ascending=False)
 
 
 def savefig(fig: plt.Figure, name: str) -> Path:
@@ -83,3 +82,36 @@ def save_table(df: pd.DataFrame, name: str) -> Path:
     path = files_dir / f"{name}.csv"
     df.to_csv(path, index=False)
     return path
+
+
+def categorize_questionnaire_type(col: str) -> str | None:
+    """Categorize a response column by questionnaire type.
+
+    Returns: 'bfi_items', 'bfi_traits', 'mosx2', 'sq', 'overall_score', or None.
+    """
+    if col.startswith("BFI Item-"):
+        return "bfi_items"
+    elif col.startswith("BFI-"):
+        return "bfi_traits"
+    elif col.startswith("MOS-X2"):
+        return "mosx2"
+    elif col.startswith("SQ "):
+        return "sq"
+    elif col == "Overall Score":
+        return "overall_score"
+    return None
+
+
+def group_columns_by_questionnaire(columns: list[str]) -> dict[str, list[str]]:
+    """Group response columns by questionnaire type.
+
+    Returns a dict like {'bfi_items': [...], 'bfi_traits': [...], ...}
+    """
+    groups = {}
+    for col in columns:
+        qtype = categorize_questionnaire_type(col)
+        if qtype:
+            if qtype not in groups:
+                groups[qtype] = []
+            groups[qtype].append(col)
+    return groups
