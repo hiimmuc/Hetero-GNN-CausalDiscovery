@@ -13,7 +13,6 @@ This module provides a comprehensive causal analysis framework including:
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Optional
 
 import graphviz
 import lingam
@@ -35,7 +34,7 @@ logger = logging.getLogger(__name__)
 np.set_printoptions(precision=3, suppress=True)
 
 
-def _build_lingam_model(algorithm: str, prior_knowledge: Optional[np.ndarray]):
+def _build_lingam_model(algorithm: str, prior_knowledge: np.ndarray | None):
     """Construct an (unfitted) LiNGAM estimator from an algorithm name.
 
     Defined at module level so it can be pickled and sent to joblib workers.
@@ -52,7 +51,7 @@ def _bootstrap_chunk(
     n_sampling: int,
     seed: int,
     algorithm: str,
-    prior_knowledge: Optional[np.ndarray],
+    prior_knowledge: np.ndarray | None,
 ):
     """Run a slice of the bootstrap in a worker process.
 
@@ -102,7 +101,7 @@ class CausalModel:
         # Create output directories
         self._setup_directories()
 
-    def _load_config(self, config_path: str) -> Dict:
+    def _load_config(self, config_path: str) -> dict:
         """Load configuration from YAML file."""
         try:
             with open(config_path, "r") as file:
@@ -528,7 +527,7 @@ class CausalModel:
             for feat in output_feats:
                 s.node(feat, style="filled", fillcolor="lightgreen")
 
-    def evaluate_model(self) -> Dict[str, float]:
+    def evaluate_model(self) -> dict[str, float]:
         """
         Evaluate model fit using various metrics.
 
@@ -639,7 +638,7 @@ class CausalModel:
 
         logger.info(f"Model saved to {output_dir}")
 
-    def load_model(self, model_path: Optional[str] = None) -> None:
+    def load_model(self, model_path: str | None = None) -> None:
         """
         Load a previously saved model.
 
@@ -711,7 +710,7 @@ class CausalModel:
                     f"Could not load normalization statistics from {normalization_stats_path}: {e}"
                 )
 
-    def predict(self, input_values: Dict[str, float]) -> Dict[str, float]:
+    def predict(self, input_values: dict[str, float]) -> dict[str, float]:
         """
         Perform causal inference given input values.
 
@@ -792,7 +791,7 @@ class CausalModel:
 
         logger.info("Complete causal analysis pipeline finished successfully!")
 
-    def get_causal_order(self) -> Optional[np.ndarray]:
+    def get_causal_order(self) -> np.ndarray | None:
         """
         Get the causal order from the fitted model.
 
@@ -803,7 +802,7 @@ class CausalModel:
             return self.model.causal_order_
         return None
 
-    def get_causal_order_features(self) -> Optional[list]:
+    def get_causal_order_features(self) -> list | None:
         """
         Get feature names in causal order.
 
@@ -858,7 +857,7 @@ class CausalModel:
         if hasattr(self, "robust_adjacency_matrix") and self.robust_adjacency_matrix is not None:
             self.print_system_of_equations(use_robust=True)
 
-    def get_normalization_stats(self) -> Optional[pd.DataFrame]:
+    def get_normalization_stats(self) -> pd.DataFrame | None:
         """
         Get normalization statistics if available.
 
@@ -867,7 +866,7 @@ class CausalModel:
         """
         return getattr(self, "normalization_stats", None)
 
-    def export_normalization_stats(self, output_path: Optional[str] = None) -> str:
+    def export_normalization_stats(self, output_path: str | None = None) -> str:
         """
         Export normalization statistics to CSV file.
 
@@ -1019,4 +1018,4 @@ class CausalModel:
         else:
             print(f"\nModel Type: {matrix_type} LinGAM")
 
-        print("")
+        print()

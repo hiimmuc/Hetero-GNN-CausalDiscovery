@@ -25,10 +25,9 @@ stats the SEM head uses), so the weighted average is well defined.
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 # Add parent directory to path to import modules
 sys.path.append(str(Path(__file__).parent.parent))
@@ -58,10 +57,10 @@ class GHCF_ACE(GHCF, CausalMixin):
         n_items: int,
         n_user_features: int,
         n_item_features: int,
-        interaction_types: List[str],
+        interaction_types: list[str],
         embedding_dim: int = 64,
-        layer_sizes: List[int] = [64, 32],
-        dropout_rates: List[float] = [0.1, 0.1],
+        layer_sizes: list[int] = [64, 32],
+        dropout_rates: list[float] = [0.1, 0.1],
         gnn_type: str = "gcn",
         n_heads: int = 4,
         device: str = "cpu",
@@ -69,7 +68,7 @@ class GHCF_ACE(GHCF, CausalMixin):
         causal_model_path: str = None,
         causal_config_path: str = None,
         ace_weight_mode: str = "learnable",
-        ace_fixed_weights: Optional[Dict[str, Dict[str, float]]] = None,
+        ace_fixed_weights: dict[str, dict[str, float]] | None = None,
         bound_bfi_output: bool = True,
         trainable_sem: bool = True,
     ):
@@ -90,12 +89,10 @@ class GHCF_ACE(GHCF, CausalMixin):
         self.all_interaction_types = interaction_types.copy()
 
         if "BFI_PERCEPTION" not in interaction_types:
-            raise ValueError(
-                "BFI_PERCEPTION must be included in interaction_types for GHCF_ACE"
-            )
+            raise ValueError("BFI_PERCEPTION must be included in interaction_types for GHCF_ACE")
 
         # The GNN models all interaction types (unlike GHCF_CE).
-        super(GHCF_ACE, self).__init__(
+        super().__init__(
             n_users=n_users,
             n_items=n_items,
             n_user_features=n_user_features,
@@ -119,7 +116,7 @@ class GHCF_ACE(GHCF, CausalMixin):
         self._init_ace_weights(ace_weight_mode, ace_fixed_weights)
 
     def _init_ace_weights(
-        self, mode: str, fixed_weights: Optional[Dict[str, Dict[str, float]]]
+        self, mode: str, fixed_weights: dict[str, dict[str, float]] | None
     ) -> None:
         """Initialize the per-type GNN/causal mixing weights."""
         if mode not in ("learnable", "fixed"):
@@ -136,7 +133,7 @@ class GHCF_ACE(GHCF, CausalMixin):
             )
         else:  # fixed
             fixed_weights = fixed_weights or {}
-            self.ace_fixed_weights: Dict[str, Tuple[float, float]] = {}
+            self.ace_fixed_weights: dict[str, tuple[float, float]] = {}
             for t in self.ace_types:
                 w = fixed_weights.get(t, {})
                 self.ace_fixed_weights[t] = (
@@ -155,9 +152,9 @@ class GHCF_ACE(GHCF, CausalMixin):
             return (1.0 - w_causal), w_causal
         return self.ace_fixed_weights[interaction_type]
 
-    def get_ace_weights(self) -> Dict[str, Tuple[float, float]]:
+    def get_ace_weights(self) -> dict[str, tuple[float, float]]:
         """Current (w_mlp, w_causal) per type as floats, for logging/inspection."""
-        out: Dict[str, Tuple[float, float]] = {}
+        out: dict[str, tuple[float, float]] = {}
         for t in self.ace_types:
             w_mlp, w_causal = self._ace_weights(t)
             out[t] = (
@@ -230,7 +227,7 @@ class GHCF_ACE(GHCF, CausalMixin):
         w_mlp, w_causal = self._ace_weights(interaction_type)
         return w_mlp * gnn_prediction + w_causal * causal_prediction
 
-    def _shared_parameters(self) -> List[torch.Tensor]:
+    def _shared_parameters(self) -> list[torch.Tensor]:
         """GradNorm shared parameters: the GNN trunk plus the trainable SEM head.
 
         The SEM coefficients are shared across all non-BFI tasks, so GradNorm
@@ -241,6 +238,6 @@ class GHCF_ACE(GHCF, CausalMixin):
         """
         return super()._shared_parameters() + self.causal_trainable_parameters()
 
-    def get_all_interaction_types(self) -> List[str]:
+    def get_all_interaction_types(self) -> list[str]:
         """All interaction types this model can predict."""
         return self.all_interaction_types.copy()

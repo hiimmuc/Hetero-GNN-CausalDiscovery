@@ -5,8 +5,6 @@ x gnn_type. bound_bfi/freeze_sem collapse to a single "n/a" value where the
 underlying flag has no effect (see the plan doc for the pruning rationale).
 """
 
-from typing import Dict, List, Optional
-
 INTERACTION_SETS = {
     "default": ["RATING", "BFI_PERCEPTION", "VOICE_QUALITY", "SUBJECTIVE_FEELING"],
     "single": ["RATING"],
@@ -44,25 +42,25 @@ CV_COMMON_ARGS = [
 ]
 
 
-def _causal_modes_for(interaction_set: str) -> List[str]:
+def _causal_modes_for(interaction_set: str) -> list[str]:
     if "BFI_PERCEPTION" not in INTERACTION_SETS[interaction_set]:
         return ["none"]
     return CAUSAL_MODES
 
 
-def _bound_bfi_values(interaction_set: str) -> List[Optional[bool]]:
+def _bound_bfi_values(interaction_set: str) -> list[bool | None]:
     if "BFI_PERCEPTION" not in INTERACTION_SETS[interaction_set]:
         return [None]
     return [True, False]
 
 
-def _freeze_sem_values(causal_mode: str) -> List[Optional[bool]]:
+def _freeze_sem_values(causal_mode: str) -> list[bool | None]:
     if causal_mode == "none":
         return [None]
     return [True, False]
 
 
-def _causal_cli_args(causal_mode: str, freeze_sem: Optional[bool]) -> List[str]:
+def _causal_cli_args(causal_mode: str, freeze_sem: bool | None) -> list[str]:
     if causal_mode == "none":
         return []
     if causal_mode == "causal":
@@ -94,7 +92,7 @@ def _tag(interaction_set, causal_mode, bound_bfi, freeze_sem, loss, adj_type, gn
     return "_".join(parts)
 
 
-def build_grid() -> List[Dict]:
+def build_grid() -> list[dict]:
     grid = []
     for interaction_set, interactions in INTERACTION_SETS.items():
         for causal_mode in _causal_modes_for(interaction_set):

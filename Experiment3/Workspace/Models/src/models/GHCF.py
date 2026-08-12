@@ -6,11 +6,10 @@ PyTorch implementation adapted from the original TensorFlow version.
 import random
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 sys.path.append(str(Path(__file__).parent.parent))
 try:
@@ -45,10 +44,10 @@ class GHCF(nn.Module):
         n_items: int,
         n_user_features: int,
         n_item_features: int,
-        interaction_types: List[str],
+        interaction_types: list[str],
         embedding_dim: int = 64,
-        layer_sizes: List[int] = [64, 32],
-        dropout_rates: List[float] = [0.1, 0.1],
+        layer_sizes: list[int] = [64, 32],
+        dropout_rates: list[float] = [0.1, 0.1],
         gnn_type: str = "gcn",
         n_heads: int = 4,
         device: str = "cpu",
@@ -72,7 +71,7 @@ class GHCF(nn.Module):
             bound_bfi_output: Squash the BFI perception head through a sigmoid so
                 it stays in [0, 1] (the MinMax target / causal-input domain)
         """
-        super(GHCF, self).__init__()
+        super().__init__()
 
         self.n_users = n_users
         self.n_items = n_items
@@ -198,10 +197,10 @@ class GHCF(nn.Module):
         self.bpr_num_neg = 1
         self.rating_threshold = 0.0
         # {user_id: set(item_id)} of positively-rated items, for BPR negatives
-        self.rating_pos_items: Optional[Dict[int, set]] = None
+        self.rating_pos_items: dict[int, set] | None = None
         # Per-batch breakdown of the RATING loss (detached), for logging the MSE
         # and BPR components separately. Populated only in hybrid mode.
-        self.last_rating_components: Dict[str, float] = {}
+        self.last_rating_components: dict[str, float] = {}
 
     def _init_weights(self) -> None:
         """Initialize model weights."""
@@ -259,8 +258,8 @@ class GHCF(nn.Module):
         self,
         user_features: torch.Tensor,
         item_features: torch.Tensor,
-        adj_matrices: Dict[str, List[torch.sparse.FloatTensor]],
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        adj_matrices: dict[str, list[torch.sparse.FloatTensor]],
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass through GHCF model.
 
@@ -502,7 +501,7 @@ class GHCF(nn.Module):
         item_ids: torch.Tensor,
         user_features: torch.Tensor,
         item_features: torch.Tensor,
-        adj_matrices: Dict[str, List[torch.sparse.FloatTensor]],
+        adj_matrices: dict[str, list[torch.sparse.FloatTensor]],
         interaction_type: str = "RATING",
         component_idx: int = None,
     ) -> torch.Tensor:
@@ -540,7 +539,7 @@ class GHCF(nn.Module):
 
         return predictions
 
-    def get_all_interaction_types(self) -> List[str]:
+    def get_all_interaction_types(self) -> list[str]:
         """
         Get all interaction types this model can predict.
 
@@ -551,8 +550,8 @@ class GHCF(nn.Module):
 
     @staticmethod
     def _group_batch_by_type(
-        batch_data: Dict[str, torch.Tensor],
-    ) -> Dict[str, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
+        batch_data: dict[str, torch.Tensor],
+    ) -> dict[str, tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         """
         Group batch entries by interaction type.
 
@@ -586,7 +585,7 @@ class GHCF(nn.Module):
     @staticmethod
     def _align_shapes(
         predictions: torch.Tensor, targets: torch.Tensor, interaction_type: str
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Align prediction/target dims, raising on genuine shape mismatches."""
         if predictions.dim() == 2 and targets.dim() == 1:
             if predictions.shape[1] == 1:
@@ -608,7 +607,7 @@ class GHCF(nn.Module):
                 )
         return predictions, targets
 
-    def _shared_parameters(self) -> List[torch.Tensor]:
+    def _shared_parameters(self) -> list[torch.Tensor]:
         """Parameters shared across tasks, used for GradNorm balancing."""
         shared_parameters = []
         shared_parameters.extend(self.gnn_layers.parameters())
@@ -645,7 +644,7 @@ class GHCF(nn.Module):
         user_embeddings: torch.Tensor,
         item_embeddings: torch.Tensor,
         relation_embeddings: torch.Tensor,
-        user_features: Optional[torch.Tensor],
+        user_features: torch.Tensor | None,
     ) -> torch.Tensor:
         """BPR pairwise ranking loss on RATING: -logsigmoid(s_pos - s_neg).
 
@@ -674,8 +673,8 @@ class GHCF(nn.Module):
         user_embeddings: torch.Tensor,
         item_embeddings: torch.Tensor,
         relation_embeddings: torch.Tensor,
-        batch_data: Dict[str, torch.Tensor],
-        interaction_weights: Dict[str, float] = None,
+        batch_data: dict[str, torch.Tensor],
+        interaction_weights: dict[str, float] = None,
         return_individual_losses: bool = False,
         use_gradnorm: bool = False,
         gradnorm_handler=None,

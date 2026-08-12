@@ -2,8 +2,6 @@
 Batch processing utilities for evaluation and training.
 """
 
-from typing import Dict, List
-
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -36,8 +34,8 @@ class BatchProcessor:
         self.batch_size = batch_size
 
     def create_training_batches(
-        self, interactions: Dict[str, np.ndarray], batch_size: int = None
-    ) -> List[Dict[str, torch.Tensor]]:
+        self, interactions: dict[str, np.ndarray], batch_size: int = None
+    ) -> list[dict[str, torch.Tensor]]:
         """
         Create training batches from interactions.
 
@@ -109,8 +107,8 @@ class BatchProcessor:
 
     @staticmethod
     def create_train_sets(
-        train_interactions: Dict[str, np.ndarray],
-    ) -> Dict[str, Dict[int, set]]:
+        train_interactions: dict[str, np.ndarray],
+    ) -> dict[str, dict[int, set]]:
         """Create per-user training item sets for exclusion during evaluation."""
         train_sets = {}
         for interaction_type, interactions in train_interactions.items():
@@ -125,7 +123,7 @@ class BatchProcessor:
         return train_sets
 
     @staticmethod
-    def get_test_users(test_interactions: Dict[str, np.ndarray]) -> List[int]:
+    def get_test_users(test_interactions: dict[str, np.ndarray]) -> list[int]:
         """Get the set of users appearing in any test interaction."""
         test_users = set()
         for interactions in test_interactions.values():
@@ -137,14 +135,14 @@ class BatchProcessor:
     def evaluate_model(
         self,
         model: torch.nn.Module,
-        test_interactions: Dict[str, np.ndarray],
-        train_interactions: Dict[str, np.ndarray],
-        k_values: List[int] = [5, 10, 20],
+        test_interactions: dict[str, np.ndarray],
+        train_interactions: dict[str, np.ndarray],
+        k_values: list[int] = [5, 10, 20],
         device: str = "cpu",
-        train_data: Dict = None,
+        train_data: dict = None,
         target_interaction: str = "RATING",
         show_progress: bool = False,
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Evaluate model ranking performance on test data.
 
@@ -223,7 +221,5 @@ class BatchProcessor:
 
         # Average metrics across all users with positive items
         if all_metrics:
-            return {
-                key: np.mean([m[key] for m in all_metrics]) for key in all_metrics[0].keys()
-            }
+            return {key: np.mean([m[key] for m in all_metrics]) for key in all_metrics[0].keys()}
         return {f"precision@{k}": 0.0 for k in k_values}

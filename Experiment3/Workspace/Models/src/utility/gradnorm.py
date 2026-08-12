@@ -5,11 +5,9 @@ Based on "GradNorm: Gradient Normalization for Adaptive Loss Balancing in Deep M
 by Chen et al. (2018).
 """
 
-from typing import Dict, List, Tuple
-
 import numpy as np
 import torch
-import torch.nn as nn
+from torch import nn
 
 
 class GradNorm:
@@ -22,9 +20,9 @@ class GradNorm:
 
     def __init__(
         self,
-        task_names: List[str],
+        task_names: list[str],
         alpha: float = 1.5,
-        initial_task_weights: Dict[str, float] = None,
+        initial_task_weights: dict[str, float] = None,
         device: str = "cpu",
     ):
         """
@@ -64,10 +62,10 @@ class GradNorm:
 
     def compute_gradnorm_weights(
         self,
-        shared_parameters: List[nn.Parameter],
-        task_losses: Dict[str, torch.Tensor],
-        task_gradients: Dict[str, List[torch.Tensor]] = None,
-    ) -> Dict[str, float]:
+        shared_parameters: list[nn.Parameter],
+        task_losses: dict[str, torch.Tensor],
+        task_gradients: dict[str, list[torch.Tensor]] = None,
+    ) -> dict[str, float]:
         """
         Compute updated task weights using GradNorm algorithm.
 
@@ -161,8 +159,8 @@ class GradNorm:
         return self.task_weights.copy()
 
     def _compute_task_gradients(
-        self, shared_parameters: List[nn.Parameter], task_losses: Dict[str, torch.Tensor]
-    ) -> Dict[str, List[torch.Tensor]]:
+        self, shared_parameters: list[nn.Parameter], task_losses: dict[str, torch.Tensor]
+    ) -> dict[str, list[torch.Tensor]]:
         """
         Compute gradients for each task loss with respect to shared parameters.
 
@@ -184,18 +182,18 @@ class GradNorm:
 
         return task_gradients
 
-    def get_current_weights(self) -> Dict[str, float]:
+    def get_current_weights(self) -> dict[str, float]:
         """Get current task weights."""
         return self.task_weights.copy()
 
 
 def compute_weighted_loss(
-    individual_losses: Dict[str, torch.Tensor],
-    weights: Dict[str, float],
+    individual_losses: dict[str, torch.Tensor],
+    weights: dict[str, float],
     use_gradnorm: bool = False,
     gradnorm_handler: GradNorm = None,
-    shared_parameters: List[nn.Parameter] = None,
-) -> Tuple[torch.Tensor, Dict[str, float]]:
+    shared_parameters: list[nn.Parameter] = None,
+) -> tuple[torch.Tensor, dict[str, float]]:
     """
     Compute weighted multi-task loss with optional GradNorm balancing.
 

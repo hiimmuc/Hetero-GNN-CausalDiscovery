@@ -64,7 +64,9 @@ def _free_gpu_mib() -> int:
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, check=True,
+            capture_output=True,
+            text=True,
+            check=True,
         )
         return int(out.stdout.strip().splitlines()[0])
     except Exception:
@@ -103,9 +105,8 @@ def load_completed_tags(manifest_path: Path) -> set:
 
 
 def append_manifest(manifest_path: Path, record: dict) -> None:
-    with _manifest_lock:
-        with open(manifest_path, "a") as f:
-            f.write(json.dumps(record) + "\n")
+    with _manifest_lock, open(manifest_path, "a") as f:
+        f.write(json.dumps(record) + "\n")
 
 
 def find_cv_dir(tag: str) -> str:
@@ -221,7 +222,9 @@ def main():
     from concurrent.futures import ThreadPoolExecutor
 
     tracker = SlotTracker(args.workers)
-    overall_bar = tqdm(total=len(grid), initial=len(completed), position=0, desc="sweep", dynamic_ncols=True)
+    overall_bar = tqdm(
+        total=len(grid), initial=len(completed), position=0, desc="sweep", dynamic_ncols=True
+    )
     worker_bars = [
         tqdm(total=0, position=i + 1, bar_format="{desc}", dynamic_ncols=True)
         for i in range(args.workers)

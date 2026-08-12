@@ -7,10 +7,8 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import torch
-import torch.optim as optim
 from configs.config import (
     ACE_FIXED_WEIGHTS,
     ACE_WEIGHT_MODE,
@@ -33,6 +31,7 @@ from configs.config import (
 from models.GHCF import GHCF
 from models.GHCF_ACE import GHCF_ACE
 from models.GHCF_CE import GHCF_CE
+from torch import optim
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.auto import tqdm
@@ -190,8 +189,8 @@ class Trainer:
             n_item_features=self.train_data["item_features"].shape[1],
             interaction_types=self.interaction_types,
             embedding_dim=self.args.embed_size,
-            layer_sizes=GRAPH_CONFIG["layer_sizes"],
-            dropout_rates=GRAPH_CONFIG["dropout_rates"],
+            layer_sizes=[self.args.embed_size],
+            dropout_rates=[getattr(self.args, "dropout", GRAPH_CONFIG["dropout_rates"][0])],
             gnn_type=getattr(self.args, "gnn_type", GRAPH_CONFIG["gnn_type"]),
             n_heads=getattr(self.args, "n_heads", GRAPH_CONFIG.get("n_heads", 4)),
             device=self.device,
@@ -225,7 +224,7 @@ class Trainer:
 
         print(f"Model created with {sum(p.numel() for p in self.model.parameters())} parameters")
 
-    def _resolve_ace_fixed_weights(self) -> Dict[str, Dict[str, float]]:
+    def _resolve_ace_fixed_weights(self) -> dict[str, dict[str, float]]:
         """Per-type fixed ACE weights: config defaults, optionally overridden by
         global --ace_w_mlp / --ace_w_causal applied to every non-BFI type."""
         weights = {k: dict(v) for k, v in ACE_FIXED_WEIGHTS.items()}
@@ -239,7 +238,7 @@ class Trainer:
                     weights[t]["w_causal"] = w_causal
         return weights
 
-    def _setup_causal_paths(self) -> Tuple[str, str]:
+    def _setup_causal_paths(self) -> tuple[str, str]:
         return resolve_causal_paths(self.args.causal_path, self.args.causal_config)
 
     def _configure_rating_loss(self) -> None:
@@ -255,7 +254,7 @@ class Trainer:
         self.model.rating_threshold = RATING_THRESHOLD
 
         if loss_mode == "hybrid":
-            pos_items: Dict[int, set] = {}
+            pos_items: dict[int, set] = {}
             for row in self.train_data["interactions"].get("RATING", []):
                 if len(row) >= 3 and float(row[2]) >= RATING_THRESHOLD:
                     pos_items.setdefault(int(row[0]), set()).add(int(row[1]))
@@ -319,7 +318,10 @@ class Trainer:
 
         # In hybrid mode, also track the RATING MSE/BPR components so they are
         # plotted alongside the combined RATING loss.
-        if getattr(self.model, "loss_mode", "mse") == "hybrid" and "RATING" in self.interaction_types:
+        if (
+            getattr(self.model, "loss_mode", "mse") == "hybrid"
+            and "RATING" in self.interaction_types
+        ):
             self.loss_history.setdefault("RATING_mse", [])
             self.loss_history.setdefault("RATING_bpr", [])
 
@@ -366,7 +368,7 @@ class Trainer:
 
         return 0
 
-    def train_epoch(self, epoch_num: int) -> Tuple[float, Dict[str, float], Dict[str, float]]:
+    def train_epoch(self, epoch_num: int) -> tuple[float, dict[str, float], dict[str, float]]:
         """Train model for one epoch."""
         self.model.train()
         total_loss = 0.0
@@ -459,7 +461,7 @@ class Trainer:
             loss_str += f" | {loss_details}"
         pbar.set_postfix_str(loss_str)
 
-    def evaluate_model(self, k_values: List[int]) -> Dict[str, float]:
+    def evaluate_model(self, k_values: list[int]) -> dict[str, float]:
         """Evaluate model on test data."""
         self.model.eval()
         metrics = self.batch_processor.evaluate_model(
@@ -582,7 +584,10 @@ class Trainer:
         ace_str = ""
         if hasattr(self.model, "get_ace_weights"):
             ace_display = ", ".join(
-                [f"{k}: {w_causal:.2f}" for k, (_, w_causal) in self.model.get_ace_weights().items()]
+                [
+                    f"{k}: {w_causal:.2f}"
+                    for k, (_, w_causal) in self.model.get_ace_weights().items()
+                ]
             )
             ace_str = f" | ACE w_causal: {ace_display}"
 

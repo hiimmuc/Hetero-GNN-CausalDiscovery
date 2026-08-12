@@ -18,9 +18,9 @@ from configs.config import (
     ADJ_TYPE,
     BATCH_SIZE,
     BOUND_BFI_OUTPUT,
+    BPR_LAMBDA,
     CAUSAL_CONFIG_PATH,
     CAUSAL_MODEL_PATH,
-    BPR_LAMBDA,
     CV_CONFIG,
     EARLY_STOP_PATIENCE,
     FREEZE_SEM,
@@ -65,6 +65,8 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
         default=["RATING", "BFI_PERCEPTION", "VOICE_QUALITY", "SUBJECTIVE_FEELING"],
         help="Interaction types to use",
     )
+
+
 def add_training_arguments(parser: argparse.ArgumentParser) -> None:
     """Add training-related arguments (defaults from configs/config.py)."""
     parser.add_argument("--lr", type=float, default=LEARNING_RATE, help="Learning rate")
@@ -109,6 +111,12 @@ def add_training_arguments(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=GRAPH_CONFIG.get("n_heads", 4),
         help="Number of attention heads (only used when --gnn_type gat)",
+    )
+    parser.add_argument(
+        "--dropout",
+        type=float,
+        default=GRAPH_CONFIG["dropout_rates"][0],
+        help="Dropout rate applied to every GNN layer",
     )
     parser.add_argument("--pretrain", type=int, default=0, help="Use pretrained model")
     parser.add_argument(

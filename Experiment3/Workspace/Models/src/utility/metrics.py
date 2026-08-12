@@ -2,13 +2,11 @@
 Evaluation metrics for recommendation systems.
 """
 
-from typing import List, Union
-
 import numpy as np
 from sklearn.metrics import roc_auc_score
 
 
-def precision_at_k(r: List[int], k: int) -> float:
+def precision_at_k(r: list[int], k: int) -> float:
     """
     Calculate precision at k.
 
@@ -26,7 +24,7 @@ def precision_at_k(r: List[int], k: int) -> float:
     return np.mean(r)
 
 
-def recall_at_k(r: List[int], k: int, all_pos_num: int) -> float:
+def recall_at_k(r: list[int], k: int, all_pos_num: int) -> float:
     """
     Calculate recall at k.
 
@@ -42,7 +40,7 @@ def recall_at_k(r: List[int], k: int, all_pos_num: int) -> float:
     return np.sum(r) / all_pos_num if all_pos_num > 0 else 0.0
 
 
-def ndcg_at_k(r: List[int], k: int) -> float:
+def ndcg_at_k(r: list[int], k: int) -> float:
     """
     Calculate NDCG at k.
 
@@ -63,7 +61,7 @@ def ndcg_at_k(r: List[int], k: int) -> float:
     return 0.0
 
 
-def hit_at_k(r: List[int], k: int) -> float:
+def hit_at_k(r: list[int], k: int) -> float:
     """
     Calculate hit rate at k.
 
@@ -78,9 +76,7 @@ def hit_at_k(r: List[int], k: int) -> float:
     return 1.0 if np.sum(r) > 0 else 0.0
 
 
-def auc(
-    ground_truth: Union[List[int], np.ndarray], prediction: Union[List[float], np.ndarray]
-) -> float:
+def auc(ground_truth: list[int] | np.ndarray, prediction: list[float] | np.ndarray) -> float:
     """
     Calculate AUC (Area Under Curve).
     Filters out infinite values (used for masking) before calculation.
@@ -123,9 +119,9 @@ def auc(
 
 
 def calculate_ranking_metrics(
-    y_true: Union[List[int], np.ndarray],
-    y_pred: Union[List[float], np.ndarray],
-    k_values: List[int] = [5, 10, 20],
+    y_true: list[int] | np.ndarray,
+    y_pred: list[float] | np.ndarray,
+    k_values: list[int] = [5, 10, 20],
 ) -> dict:
     """
     Calculate multiple ranking metrics.

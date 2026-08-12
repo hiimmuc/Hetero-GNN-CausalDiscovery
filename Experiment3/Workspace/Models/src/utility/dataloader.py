@@ -4,7 +4,7 @@ Data loader for eHMI recommendation system with heterogeneous multi-relational i
 
 import pickle
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -37,12 +37,12 @@ class eHMIDataset(Dataset):
     def __init__(
         self,
         data_path: str,
-        interaction_types: List[str],
+        interaction_types: list[str],
         test_size: float = 0.2,
         adj_type: str = "norm",
         normalize_interactions: bool = True,
         random_state: int = 42,
-        interaction_norm_stats: Optional[pd.DataFrame] = None,
+        interaction_norm_stats: pd.DataFrame | None = None,
     ):
         """
         Initialize eHMI dataset.
@@ -70,7 +70,7 @@ class eHMIDataset(Dataset):
 
         # Build a {feature_name: (mean, std)} lookup from the shared causal
         # normalization stats, if provided.
-        self._interaction_stats_lookup: Optional[Dict[str, Tuple[float, float]]] = None
+        self._interaction_stats_lookup: dict[str, tuple[float, float]] | None = None
         if interaction_norm_stats is not None:
             self._interaction_stats_lookup = {
                 str(row["feature"]): (float(row["mean"]), float(row["std"]))
@@ -123,7 +123,7 @@ class eHMIDataset(Dataset):
         # Process features and interactions for each split
         self._process_split_data()
 
-    def _get_interaction_columns(self) -> Dict[str, List[str]]:
+    def _get_interaction_columns(self) -> dict[str, list[str]]:
         """Get interaction columns based on selected interaction types."""
         all_interactions = {
             "RATING": ["Rating score"],
@@ -248,8 +248,8 @@ class eHMIDataset(Dataset):
         print(f"Item feature shape: {self.item_features.shape}")
 
     def _zscore_interaction(
-        self, interaction_values: np.ndarray, columns: List[str], interaction_type: str
-    ) -> Tuple[np.ndarray, str]:
+        self, interaction_values: np.ndarray, columns: list[str], interaction_type: str
+    ) -> tuple[np.ndarray, str]:
         """Z-score interaction targets.
 
         Uses the shared causal normalization stats (per-column mean/std) when
@@ -279,7 +279,7 @@ class eHMIDataset(Dataset):
 
     def _process_interactions_for_split(
         self, df: pd.DataFrame, split_name: str, create_adj_matrices: bool = True
-    ) -> Tuple[Dict[str, np.ndarray], Dict[str, List]]:
+    ) -> tuple[dict[str, np.ndarray], dict[str, list]]:
         """Process interactions for a specific data split."""
         print(f"Processing interactions for {split_name} set...")
 
@@ -365,7 +365,7 @@ class eHMIDataset(Dataset):
 
         return interactions, adj_matrices
 
-    def get_train_data(self) -> Dict[str, Any]:
+    def get_train_data(self) -> dict[str, Any]:
         """Get training data."""
         return {
             "interactions": self.train_interactions,
@@ -376,7 +376,7 @@ class eHMIDataset(Dataset):
             "n_items": self.n_items,
         }
 
-    def get_test_data(self) -> Dict[str, Any]:
+    def get_test_data(self) -> dict[str, Any]:
         """Get test data."""
         return {
             "interactions": self.test_interactions,
@@ -415,7 +415,7 @@ class eHMIDataset(Dataset):
         print(f"Data saved to {save_path}")
 
 
-def load_processed_data(data_dir: str) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def load_processed_data(data_dir: str) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     """
     Load processed data from disk.
 

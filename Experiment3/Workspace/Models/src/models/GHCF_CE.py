@@ -10,7 +10,6 @@ feeling losses train the GNN through the causal structure.
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import torch
 
@@ -41,10 +40,10 @@ class GHCF_CE(GHCF, CausalMixin):
         n_items: int,
         n_user_features: int,
         n_item_features: int,
-        interaction_types: List[str],
+        interaction_types: list[str],
         embedding_dim: int = 64,
-        layer_sizes: List[int] = [64, 32],
-        dropout_rates: List[float] = [0.1, 0.1],
+        layer_sizes: list[int] = [64, 32],
+        dropout_rates: list[float] = [0.1, 0.1],
         gnn_type: str = "gcn",
         n_heads: int = 4,
         device: str = "cpu",
@@ -81,12 +80,10 @@ class GHCF_CE(GHCF, CausalMixin):
         self.all_interaction_types = interaction_types.copy()
 
         if "BFI_PERCEPTION" not in interaction_types:
-            raise ValueError(
-                "BFI_PERCEPTION must be included in interaction_types for GHCF_CE"
-            )
+            raise ValueError("BFI_PERCEPTION must be included in interaction_types for GHCF_CE")
 
         # The GNN only models BFI_PERCEPTION; everything else is causal
-        super(GHCF_CE, self).__init__(
+        super().__init__(
             n_users=n_users,
             n_items=n_items,
             n_user_features=n_user_features,
@@ -110,8 +107,8 @@ class GHCF_CE(GHCF, CausalMixin):
         self,
         user_features: torch.Tensor,
         item_features: torch.Tensor,
-        adj_matrices: Dict[str, torch.sparse.FloatTensor],
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        adj_matrices: dict[str, torch.sparse.FloatTensor],
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass using only BFI adjacency matrices for GNN computation.
 
@@ -197,7 +194,7 @@ class GHCF_CE(GHCF, CausalMixin):
             causal_prediction = causal_prediction[:, component_idx : component_idx + 1]
         return causal_prediction
 
-    def _shared_parameters(self) -> List[torch.Tensor]:
+    def _shared_parameters(self) -> list[torch.Tensor]:
         """GradNorm shared parameters: the GNN trunk plus the trainable SEM head.
 
         Every non-BFI task's gradient flows through the SEM coefficients, so
@@ -206,7 +203,7 @@ class GHCF_CE(GHCF, CausalMixin):
         """
         return super()._shared_parameters() + self.causal_trainable_parameters()
 
-    def get_all_interaction_types(self) -> List[str]:
+    def get_all_interaction_types(self) -> list[str]:
         """
         Get all interaction types that this model can predict.
 

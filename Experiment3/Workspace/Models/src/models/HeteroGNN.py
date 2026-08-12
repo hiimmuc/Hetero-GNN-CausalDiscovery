@@ -2,11 +2,9 @@
 Heterogeneous Graph Neural Network components for multi-relational recommendation.
 """
 
-from typing import List, Optional, Tuple
-
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 
 
 class HeteroGCNLayer(nn.Module):
@@ -24,7 +22,7 @@ class HeteroGCNLayer(nn.Module):
             n_relations: Number of relation types
             dropout: Dropout rate
         """
-        super(HeteroGCNLayer, self).__init__()
+        super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.n_relations = n_relations
@@ -50,9 +48,9 @@ class HeteroGCNLayer(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        adj_matrices: List[torch.sparse.FloatTensor],
-        relation_embeddings: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        adj_matrices: list[torch.sparse.FloatTensor],
+        relation_embeddings: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Forward pass through HeteroGCN layer.
 
@@ -127,7 +125,7 @@ class HeteroGraphSAGELayer(nn.Module):
             n_relations: Number of relation types
             dropout: Dropout rate
         """
-        super(HeteroGraphSAGELayer, self).__init__()
+        super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.n_relations = n_relations
@@ -149,9 +147,9 @@ class HeteroGraphSAGELayer(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        adj_matrices: List[torch.sparse.FloatTensor],
-        relation_embeddings: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        adj_matrices: list[torch.sparse.FloatTensor],
+        relation_embeddings: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Forward pass through HeteroGraphSAGE layer.
 
@@ -212,7 +210,7 @@ class HeteroGATLayer(nn.Module):
             n_heads: Number of attention heads
             dropout: Dropout rate
         """
-        super(HeteroGATLayer, self).__init__()
+        super().__init__()
         self.in_dim = in_dim
         self.out_dim = out_dim
         self.n_relations = n_relations
@@ -254,9 +252,9 @@ class HeteroGATLayer(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        adj_matrices: List[torch.sparse.FloatTensor],
-        relation_embeddings: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+        adj_matrices: list[torch.sparse.FloatTensor],
+        relation_embeddings: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Forward pass through HeteroGAT layer.
 
@@ -348,7 +346,7 @@ class MultiRelationEmbedding(nn.Module):
             n_relations: Number of relation types
             embedding_dim: Embedding dimension
         """
-        super(MultiRelationEmbedding, self).__init__()
+        super().__init__()
         self.n_relations = n_relations
         self.embedding_dim = embedding_dim
 

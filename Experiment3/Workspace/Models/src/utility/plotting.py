@@ -3,7 +3,6 @@ Plotting utilities for training visualization.
 """
 
 from pathlib import Path
-from typing import Dict, List
 
 import matplotlib
 
@@ -12,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def save_loss_plots(loss_history: Dict[str, List[float]], output_dir: Path) -> None:
+def save_loss_plots(loss_history: dict[str, list[float]], output_dir: Path) -> None:
     """
     Save loss plots for training visualization.
 
@@ -28,7 +27,7 @@ def save_loss_plots(loss_history: Dict[str, List[float]], output_dir: Path) -> N
     plots_dir.mkdir(exist_ok=True)
 
     # Plot total loss
-    if "total" in loss_history and loss_history["total"]:
+    if loss_history.get("total"):
         plt.figure(figsize=(10, 6))
         plt.plot(loss_history["total"], label="Total Loss", linewidth=2)
         plt.xlabel("Epoch")
@@ -92,7 +91,7 @@ def save_loss_plots(loss_history: Dict[str, List[float]], output_dir: Path) -> N
             plt.close()
 
 
-def save_weight_plots(weight_history: Dict[str, List[float]], output_dir: Path) -> None:
+def save_weight_plots(weight_history: dict[str, list[float]], output_dir: Path) -> None:
     """
     Save weight plots for GradNorm visualization.
 

@@ -6,7 +6,6 @@ import ast
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import torch
 from configs.config import (
@@ -36,10 +35,10 @@ class Evaluator:
         self.args = args
         self.device = DEVICE
         self.k_values = ast.literal_eval(args.k_values)
-        self.model: Optional[GHCF] = None
-        self.train_data: Optional[Dict] = None
-        self.test_data: Optional[Dict] = None
-        self.metadata: Optional[Dict] = None
+        self.model: GHCF | None = None
+        self.train_data: dict | None = None
+        self.test_data: dict | None = None
+        self.metadata: dict | None = None
 
         # Set default values for causal and ace if not provided
         if not hasattr(self.args, "causal"):
@@ -63,7 +62,7 @@ class Evaluator:
         self._load_data(model_config["interaction_types"])
         self._load_model(model_config)
 
-    def _load_model_config(self) -> Dict:
+    def _load_model_config(self) -> dict:
         """Load model configuration from results.json."""
         model_dir = Path(self.args.model_dir)
         results_file = model_dir / "results.json"
@@ -79,7 +78,7 @@ class Evaluator:
 
         return results["model_config"]
 
-    def _get_processed_data_dir(self, interaction_types: List[str]) -> Path:
+    def _get_processed_data_dir(self, interaction_types: list[str]) -> Path:
         """Determine the correct processed data directory based on interaction types."""
         data_base_path = DATA_DIR
 
@@ -111,7 +110,7 @@ class Evaluator:
             f"Available directories: {available_dirs}"
         )
 
-    def _load_data(self, interaction_types: List[str]) -> None:
+    def _load_data(self, interaction_types: list[str]) -> None:
         """Load processed data."""
         processed_data_dir = self._get_processed_data_dir(interaction_types)
         self.logger.info(f"Using processed data directory: {processed_data_dir}")
@@ -125,7 +124,7 @@ class Evaluator:
             f"Interaction types: {self.metadata['interaction_types']}"
         )
 
-    def _load_model(self, model_config: Dict) -> None:
+    def _load_model(self, model_config: dict) -> None:
         """Load trained model from checkpoint."""
         model_dir = Path(self.args.model_dir)
 
@@ -184,14 +183,14 @@ class Evaluator:
         else:
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
 
-    def _setup_causal_paths(self) -> Tuple[str, str]:
+    def _setup_causal_paths(self) -> tuple[str, str]:
         return resolve_causal_paths(self.args.causal_path, self.args.causal_config)
 
     def evaluate_recommendations(
         self,
-        k_values: List[int] = [5, 10, 20],
+        k_values: list[int] = [5, 10, 20],
         target_interaction: str = "RATING",
-    ) -> Dict[str, float]:
+    ) -> dict[str, float]:
         """
         Evaluate the model for the recommendation task.
 
@@ -219,7 +218,7 @@ class Evaluator:
             show_progress=True,
         )
 
-    def save_results(self, metrics: Dict[str, float]) -> None:
+    def save_results(self, metrics: dict[str, float]) -> None:
         """
         Save evaluation results.
 
@@ -240,7 +239,7 @@ class Evaluator:
 
         self.logger.info(f"Evaluation results saved to {eval_file}")
 
-    def print_results(self, metrics: Dict[str, float]) -> None:
+    def print_results(self, metrics: dict[str, float]) -> None:
         """Print evaluation results."""
         self.logger.info("Evaluation Results:")
         self.logger.info("-" * 50)

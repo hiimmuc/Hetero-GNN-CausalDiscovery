@@ -6,7 +6,6 @@ import json
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import numpy as np
 from configs.config import (
@@ -47,7 +46,7 @@ class CrossValidationSplitter:
         else:
             self.splitter = KFold(n_splits=n_folds, shuffle=True, random_state=random_state)
 
-    def split_interactions(self, interactions: Dict[str, List]) -> List[Tuple[Dict, Dict]]:
+    def split_interactions(self, interactions: dict[str, list]) -> list[tuple[dict, dict]]:
         """
         Split interactions data into train/validation folds.
 
@@ -151,7 +150,7 @@ class CrossValidationTrainer:
         with open(self.cv_dir / "cv_config.json", "w") as f:
             json.dump(cv_config, f, indent=2)
 
-    def load_data(self) -> Tuple[Dict, Dict, Dict]:
+    def load_data(self) -> tuple[dict, dict, dict]:
         """Load dataset for cross-validation."""
         data_path = DATABASE_PATH
         interactions_hash = "_".join(sorted(self.args.interactions))
@@ -174,7 +173,7 @@ class CrossValidationTrainer:
 
     def _create_new_dataset(
         self, data_path: Path, processed_data_dir: Path
-    ) -> Tuple[Dict, Dict, Dict]:
+    ) -> tuple[dict, dict, dict]:
         """Create new dataset."""
         norm_stats = load_interaction_norm_stats(
             getattr(self.args, "causal_path", CAUSAL_MODEL_PATH)
@@ -205,11 +204,11 @@ class CrossValidationTrainer:
 
     @staticmethod
     def _build_fold_adj_matrices(
-        interactions: Dict[str, List],
+        interactions: dict[str, list],
         n_users: int,
         n_items: int,
         adj_type: str,
-    ) -> Dict:
+    ) -> dict:
         """Build adjacency matrices from fold-specific training interactions only.
 
         Calling this per fold prevents validation-set edges from leaking into
@@ -231,7 +230,7 @@ class CrossValidationTrainer:
             sparse_mx_to_torch_sparse_tensor,
         )
 
-        adj_matrices: Dict = {}
+        adj_matrices: dict = {}
         for interaction_type, interaction_list in interactions.items():
             if not interaction_list:
                 adj_matrices[interaction_type] = []
@@ -249,8 +248,8 @@ class CrossValidationTrainer:
         return adj_matrices
 
     def run_fold(
-        self, fold_idx: int, train_data: Dict, val_data: Dict, all_data: Dict, metadata: Dict
-    ) -> Dict:
+        self, fold_idx: int, train_data: dict, val_data: dict, all_data: dict, metadata: dict
+    ) -> dict:
         """
         Run training for a single fold.
 
@@ -309,7 +308,7 @@ class CrossValidationTrainer:
 
         return fold_results
 
-    def run(self) -> Dict:
+    def run(self) -> dict:
         """Run complete cross-validation."""
         set_seed(RANDOM_SEED)
 
@@ -344,7 +343,7 @@ class CrossValidationTrainer:
 
         return self.cv_results
 
-    def _aggregate_results(self, cv_time: float) -> Dict:
+    def _aggregate_results(self, cv_time: float) -> dict:
         """Aggregate results across all folds."""
         if not self.fold_results:
             return {}
@@ -443,7 +442,7 @@ class FoldTrainer(Trainer):
     """Trainer for a single CV fold."""
 
     def __init__(
-        self, args, train_data: Dict, val_data: Dict, metadata: Dict, fold_dir: Path, fold_idx: int
+        self, args, train_data: dict, val_data: dict, metadata: dict, fold_dir: Path, fold_idx: int
     ):
         """
         Initialize fold trainer.
@@ -502,7 +501,7 @@ class FoldTrainer(Trainer):
         # Setup training components (calls overridden version above)
         self._setup_training_components()
 
-    def train(self) -> Dict:
+    def train(self) -> dict:
         """Train model for this fold."""
         # Setup components
         self.setup()

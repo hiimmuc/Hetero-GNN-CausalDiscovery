@@ -26,3 +26,6 @@ lingam
 joblib>=1.1.0
 graphviz
 pyyaml
+
+# Hyperparameter search
+optuna>=3.5.0

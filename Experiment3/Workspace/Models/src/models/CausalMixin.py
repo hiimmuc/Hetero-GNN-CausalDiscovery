@@ -10,7 +10,6 @@ path stays inside autograd so those losses train the GNN end-to-end.
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import torch
 
@@ -60,8 +59,8 @@ class CausalMixin:
     def init_causal_components(
         self,
         use_causal: bool = False,
-        causal_model_path: Optional[str] = None,
-        causal_config_path: Optional[str] = None,
+        causal_model_path: str | None = None,
+        causal_config_path: str | None = None,
         trainable_sem: bool = True,
     ) -> None:
         """
@@ -77,7 +76,7 @@ class CausalMixin:
                 training (DAG mask is fixed either way)
         """
         self.use_causal = use_causal
-        self.causal_head: Optional[SEMHead] = None
+        self.causal_head: SEMHead | None = None
         self.causal_config_path = causal_config_path
 
         if not use_causal:
@@ -116,7 +115,7 @@ class CausalMixin:
                 raise ValueError("Entire " + msg)
             print("[causal][WARNING] Partial " + msg)
 
-    def causal_trainable_parameters(self) -> List[torch.Tensor]:
+    def causal_trainable_parameters(self) -> list[torch.Tensor]:
         """Trainable parameters of the causal SEM head (the masked SEM weights).
 
         These form the shared causal trunk for every non-BFI task, so GradNorm
@@ -175,8 +174,8 @@ class CausalMixin:
         return bfi_prediction
 
     def _predict_with_causal_model(
-        self, bfi_diff: torch.Tensor, interaction_types: List[str], debug: bool = False
-    ) -> Dict[str, torch.Tensor]:
+        self, bfi_diff: torch.Tensor, interaction_types: list[str], debug: bool = False
+    ) -> dict[str, torch.Tensor]:
         """
         Predict interaction values from BFI-TIPI differences via the SEM head.
 
@@ -214,7 +213,7 @@ class CausalMixin:
         return predictions
 
     def validate_causal_requirements(
-        self, interaction_type: str, user_features: Optional[torch.Tensor]
+        self, interaction_type: str, user_features: torch.Tensor | None
     ) -> None:
         """
         Validate requirements for causal prediction.

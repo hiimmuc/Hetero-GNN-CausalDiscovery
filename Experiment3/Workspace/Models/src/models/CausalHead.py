@@ -14,13 +14,13 @@ was fitted on, matching the normalized interaction targets produced by the
 dataloader.
 """
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
 
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
+from torch import nn
 
 # Exogenous input features, in the column order of the bfi_diff tensor (O, C, E, A, N)
 INPUT_FEATURES = [
@@ -46,9 +46,9 @@ class SEMHead(nn.Module):
         adjacency_matrix: np.ndarray,
         features: Sequence[str],
         causal_order: Sequence[int],
-        interaction_columns: Dict[str, List[str]],
+        interaction_columns: dict[str, list[str]],
         trainable: bool = True,
-        norm_stats: Optional[pd.DataFrame] = None,
+        norm_stats: pd.DataFrame | None = None,
     ):
         """
         Initialize SEM head from a fitted LiNGAM model.
@@ -65,7 +65,7 @@ class SEMHead(nn.Module):
             norm_stats: DataFrame with columns [feature, mean, std] used to
                 z-score the BFI-diff inputs before propagation
         """
-        super(SEMHead, self).__init__()
+        super().__init__()
 
         adjacency_matrix = np.asarray(adjacency_matrix, dtype=np.float32)
         n_features = adjacency_matrix.shape[0]
@@ -88,7 +88,7 @@ class SEMHead(nn.Module):
             self.input_indices.append(self.features.index(name))
 
         # Map each interaction type to the feature indices it predicts
-        self.interaction_indices: Dict[str, List[int]] = {}
+        self.interaction_indices: dict[str, list[int]] = {}
         for interaction_type, columns in interaction_columns.items():
             if interaction_type == "BFI_PERCEPTION":
                 continue  # BFI perception is predicted by the graph model
@@ -98,9 +98,7 @@ class SEMHead(nn.Module):
                     f"Columns {missing} for {interaction_type} not found in causal features "
                     f"{self.features}"
                 )
-            self.interaction_indices[interaction_type] = [
-                self.features.index(c) for c in columns
-            ]
+            self.interaction_indices[interaction_type] = [self.features.index(c) for c in columns]
 
         # DAG-masked SEM coefficients, initialized from LiNGAM
         weight = torch.from_numpy(adjacency_matrix)
@@ -112,8 +110,7 @@ class SEMHead(nn.Module):
 
         # Precompute parent lists per variable (from the fixed mask)
         self._parents = {
-            v: torch.nonzero(self.mask[v], as_tuple=True)[0].tolist()
-            for v in range(n_features)
+            v: torch.nonzero(self.mask[v], as_tuple=True)[0].tolist() for v in range(n_features)
         }
 
         # Reachability: a feature is "driven" if it is an exogenous input or has
@@ -147,21 +144,21 @@ class SEMHead(nn.Module):
         """Total number of predicted output components across interaction types."""
         return sum(len(indices) for indices in self.interaction_indices.values())
 
-    def disconnected_outputs(self) -> List[str]:
+    def disconnected_outputs(self) -> list[str]:
         """Names of predicted outputs with no causal path from the BFI-TIPI inputs.
 
         forward() emits constant zeros for these, so a nonempty list means part
         of the causal graph was pruned (commonly by robust-adjacency
         thresholding). Returned as ``interaction_type:feature`` labels.
         """
-        names: List[str] = []
+        names: list[str] = []
         for interaction_type, indices in self.interaction_indices.items():
             for feat_idx in indices:
                 if not self._driven[feat_idx]:
                     names.append(f"{interaction_type}:{self.features[feat_idx]}")
         return names
 
-    def forward(self, bfi_diff: torch.Tensor) -> Dict[str, torch.Tensor]:
+    def forward(self, bfi_diff: torch.Tensor) -> dict[str, torch.Tensor]:
         """
         Propagate BFI-TIPI differences through the causal DAG.
 
@@ -182,7 +179,7 @@ class SEMHead(nn.Module):
         normed_input = (bfi_diff - self.input_mean) / self.input_std
 
         # Per-feature column values, filled in causal order
-        values: List[Optional[torch.Tensor]] = [None] * self.n_features
+        values: list[torch.Tensor | None] = [None] * self.n_features
         for i, idx in enumerate(self.input_indices):
             values[idx] = normed_input[:, i]
 
@@ -212,8 +209,8 @@ class SEMHead(nn.Module):
 
 def load_sem_head(
     model_data_path: str,
-    norm_stats_path: Optional[str] = None,
-    interaction_columns: Optional[Dict[str, List[str]]] = None,
+    norm_stats_path: str | None = None,
+    interaction_columns: dict[str, list[str]] | None = None,
     trainable: bool = True,
 ) -> SEMHead:
     """
@@ -246,9 +243,11 @@ def load_sem_head(
             raise ValueError(f"{model_data_path} is missing '{key}'")
 
     if norm_stats_path is None:
-        norm_stats_path = str(model_data_path).replace(
-            "_model_data.npy", "_normalization_stats.csv"
-        ).replace("_robust_normalization_stats.csv", "_normalization_stats.csv")
+        norm_stats_path = (
+            str(model_data_path)
+            .replace("_model_data.npy", "_normalization_stats.csv")
+            .replace("_robust_normalization_stats.csv", "_normalization_stats.csv")
+        )
     norm_stats_path = Path(norm_stats_path)
     if not norm_stats_path.exists():
         raise FileNotFoundError(f"Normalization stats not found: {norm_stats_path}")
@@ -257,9 +256,7 @@ def load_sem_head(
     if interaction_columns is None:
         from configs.config import INTERACTION_TYPES
 
-        interaction_columns = {
-            name: cfg["columns"] for name, cfg in INTERACTION_TYPES.items()
-        }
+        interaction_columns = {name: cfg["columns"] for name, cfg in INTERACTION_TYPES.items()}
 
     return SEMHead(
         adjacency_matrix=model_data["adjacency_matrix"],
