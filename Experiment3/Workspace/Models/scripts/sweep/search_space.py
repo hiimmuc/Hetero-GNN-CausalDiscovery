@@ -1,16 +1,23 @@
 """Optuna search space for the GHCF ablation search.
 
-Mirrors grid.py's axes (interaction_set x causal_mode x bound_bfi x
-freeze_sem x loss x adj_type x gnn_type) as conditional categorical
-suggestions, plus continuous hyperparameters that grid.py held fixed
-(lr, weight_decay, dropout, embed_size) and a continuous ACE mix weight
-in place of grid.py's three fixed splits.
+Narrowed from the full grid.py axes based on checkpoints/sweep_full's 1080
+completed trials: interaction_set="multiple" (RATING + BFI_PERCEPTION) beat
+"default" (all 4 relations) by a wide margin on ndcg@10 (mean 0.748 vs
+0.709, 40/50 of the top-50 configs) and strictly dominates "single" (same
+relations minus the causal/BFI head), so it's fixed here rather than
+searched. causal_mode/bound_bfi/freeze_sem/adj_type/gnn_type/loss showed no
+single dominant winner in that sweep (means close across values), so they
+stay searchable. Continuous hyperparameters (lr, weight_decay, dropout,
+embed_size) were never varied by grid.py at all -- that's Optuna's actual
+value-add here -- plus a continuous ACE mix weight replacing grid.py's three
+fixed splits.
 """
 
 import optuna
 
-from grid import CV_COMMON_ARGS, INTERACTION_SETS
+from grid import CV_COMMON_ARGS
 
+INTERACTIONS = ["RATING", "BFI_PERCEPTION"]
 LOSSES = ["mse", "hybrid"]
 ADJ_TYPES = ["pre", "norm", "mean", "plain"]
 GNN_TYPES = ["gcn", "sage", "gat"]
@@ -44,13 +51,9 @@ def _causal_cli_args(trial: optuna.Trial, causal_mode: str) -> list[str]:
 def suggest_params(trial: optuna.Trial) -> dict:
     """Sample one trial's config, returning both the config dict (for the
     manifest/dataframe) and the cli_args to pass to `main.py train --cv`."""
-    interaction_set = trial.suggest_categorical("interaction_set", list(INTERACTION_SETS))
-    interactions = INTERACTION_SETS[interaction_set]
-    has_bfi = "BFI_PERCEPTION" in interactions
-
-    causal_mode = trial.suggest_categorical("causal_mode", CAUSAL_MODES) if has_bfi else "none"
-    bound_bfi = trial.suggest_categorical("bound_bfi", [True, False]) if has_bfi else None
-    causal_cli_args = _causal_cli_args(trial, causal_mode) if has_bfi else []
+    causal_mode = trial.suggest_categorical("causal_mode", CAUSAL_MODES)
+    bound_bfi = trial.suggest_categorical("bound_bfi", [True, False])
+    causal_cli_args = _causal_cli_args(trial, causal_mode)
 
     loss = trial.suggest_categorical("loss", LOSSES)
     adj_type = trial.suggest_categorical("adj_type", ADJ_TYPES)
@@ -62,7 +65,7 @@ def suggest_params(trial: optuna.Trial) -> dict:
     embed_size = trial.suggest_categorical("embed_size", EMBED_SIZES)
 
     cli_args = (
-        ["--interactions", *interactions]
+        ["--interactions", *INTERACTIONS]
         + CV_COMMON_ARGS
         + [
             "--loss",
@@ -81,13 +84,11 @@ def suggest_params(trial: optuna.Trial) -> dict:
             str(embed_size),
         ]
         + causal_cli_args
-        + ["--run_tag", f"trial{trial.number}"]
+        + ["--run_tag", f"trial{trial.number}", "--bound_bfi" if bound_bfi else "--no-bound_bfi"]
     )
-    if bound_bfi is not None:
-        cli_args.append("--bound_bfi" if bound_bfi else "--no-bound_bfi")
 
     config = {
-        "interaction_set": interaction_set,
+        "interaction_set": "multiple",
         "causal_mode": causal_mode,
         "bound_bfi": bound_bfi,
         "loss": loss,

@@ -32,11 +32,11 @@ def main() -> None:
     # Print comprehensive model information including system of equations
     causal_model.print_model_info()
 
-    print("\n" + "=" * 60)
-    print("SEPARATE SYSTEM OF EQUATIONS CALLS:")
-    causal_model.print_system_of_equations(use_robust=False)
-    if hasattr(causal_model, "robust_adjacency_matrix"):
-        causal_model.print_system_of_equations(use_robust=True)
+    # print("\n" + "=" * 60)
+    # print("SEPARATE SYSTEM OF EQUATIONS CALLS:")
+    # causal_model.print_system_of_equations(use_robust=False)
+    # if hasattr(causal_model, "robust_adjacency_matrix"):
+    #     causal_model.print_system_of_equations(use_robust=True)
 
     if causal_model.config["inference"]["enable_inference"]:
         example_input = {

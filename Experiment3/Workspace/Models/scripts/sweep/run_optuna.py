@@ -38,12 +38,13 @@ def run_trial(
     threads_per_worker: int,
     tracker: SlotTracker,
     overall_bar: tqdm,
+    ckpt_root: Path,
 ) -> float:
     sampled = suggest_params(trial)
     config, cli_args = sampled["config"], sampled["cli_args"]
     tag = f"trial{trial.number}"
     log_path = log_dir / f"{tag}.log"
-    cmd = ["python", "src/main.py", "train"] + cli_args
+    cmd = ["python", "src/main.py", "train"] + cli_args + ["--checkpoint_root", str(ckpt_root)]
 
     wait_for_gpu_memory()
 
@@ -66,7 +67,7 @@ def run_trial(
         tracker.release(slot)
 
     record = dict(config, tag=tag, wall_time_s=wall_time)
-    cv_dir = find_cv_dir(tag)
+    cv_dir = find_cv_dir(tag, root=str(ckpt_root))
     record["cv_dir"] = cv_dir
 
     if proc.returncode != 0 or not cv_dir:
@@ -105,6 +106,7 @@ def worker_loop(
     threads_per_worker: int,
     tracker: SlotTracker,
     overall_bar: tqdm,
+    ckpt_root: Path,
 ) -> None:
     while True:
         with remaining_lock:
@@ -114,7 +116,9 @@ def worker_loop(
 
         trial = study.ask()
         try:
-            value = run_trial(trial, log_dir, manifest_path, threads_per_worker, tracker, overall_bar)
+            value = run_trial(
+                trial, log_dir, manifest_path, threads_per_worker, tracker, overall_bar, ckpt_root
+            )
         except optuna.TrialPruned:
             study.tell(trial, state=optuna.trial.TrialState.FAIL)
             continue
@@ -133,11 +137,16 @@ def dry_run(n: int) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--study_name", type=str, default=None, help="Resume an existing study (also the sqlite filename)"
+        "--study_name",
+        type=str,
+        default=None,
+        help="Resume an existing study (also the sqlite filename)",
     )
     parser.add_argument("--workers", type=int, default=16)
     parser.add_argument("--n_trials", type=int, required=True)
-    parser.add_argument("--dry_run", action="store_true", help="Print sampled configs, run nothing")
+    parser.add_argument(
+        "--dry_run", action="store_true", help="Print sampled configs, run nothing"
+    )
     args = parser.parse_args()
 
     if args.dry_run:
@@ -148,6 +157,8 @@ def main() -> None:
     sweep_dir = MODELS_DIR / "checkpoints" / f"optuna_{study_name}"
     log_dir = sweep_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_root = sweep_dir / "ckpt"
+    ckpt_root.mkdir(parents=True, exist_ok=True)
     manifest_path = sweep_dir / "manifest.jsonl"
 
     storage = f"sqlite:///{sweep_dir}.db"
@@ -155,9 +166,7 @@ def main() -> None:
         study_name=study_name, storage=storage, direction="maximize", load_if_exists=True
     )
 
-    already_done = len(
-        [t for t in study.trials if t.state in (optuna.trial.TrialState.COMPLETE,)]
-    )
+    already_done = len([t for t in study.trials if t.state in (optuna.trial.TrialState.COMPLETE,)])
     threads_per_worker = max(1, (os.cpu_count() or args.workers) // args.workers)
     print(f"Study: {study_name} ({storage})")
     print(f"Target trials: {args.n_trials}  Already complete: {already_done}")
@@ -191,6 +200,7 @@ def main() -> None:
                     threads_per_worker,
                     tracker,
                     overall_bar,
+                    ckpt_root,
                 )
                 for _ in range(args.workers)
             ]

@@ -28,7 +28,8 @@ CONTROL_CONDITION = "99.T"
 # Response TestIDs preprocess_data.py flags as low quality (see EDA/eda.ipynb
 # Section 5: C3 has a non-numeric stray value, C31 has 25/28 cells missing;
 # C15/C25/C30 have similar missingness/straight-lining issues).
-EXCLUDED_TESTIDS = {"C3", "C15", "C25", "C30", "C31"}
+# EXCLUDED_TESTIDS = {"C3", "C15", "C25", "C30", "C31"}
+EXCLUDED_TESTIDS = {}  # retain all 35 participants for the full dataset variant (SET=35)
 
 # The two dataset variants Models/src/configs/config.py's SET switches between:
 # "35" = the full 35-participant study; "25" = the original 25-session pilot

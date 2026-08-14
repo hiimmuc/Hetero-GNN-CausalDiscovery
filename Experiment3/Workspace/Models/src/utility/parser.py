@@ -245,6 +245,17 @@ def add_cv_arguments(parser: argparse.ArgumentParser) -> None:
             "don't collide on second-resolution timestamps."
         ),
     )
+    parser.add_argument(
+        "--checkpoint_root",
+        type=str,
+        default="checkpoints",
+        help=(
+            "Root directory under which the CV output directory "
+            "({checkpoint_root}/cv_{run_tag}_{timestamp}/) is created. "
+            "Lets sweep drivers nest a study's runs (e.g. checkpoints/optuna_full35/ckpt/) "
+            "instead of dumping directly into checkpoints/."
+        ),
+    )
 
 
 def parse_args() -> argparse.Namespace:

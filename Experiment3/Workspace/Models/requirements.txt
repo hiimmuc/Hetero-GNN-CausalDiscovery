@@ -1,1 +1,1 @@
--r ./src/models/requirements.txt
+-r ./src/requirements.txt

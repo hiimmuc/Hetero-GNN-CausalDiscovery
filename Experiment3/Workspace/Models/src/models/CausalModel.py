@@ -571,7 +571,7 @@ class CausalModel:
                 "causal_order": self.model.causal_order_ if self.model is not None else None,
                 "features": self.features,
             }
-            np.save(output_dir / f"{model_name}_model_data.npy", model_data)
+            np.save(output_dir / f"{model_name}_direct_model_data.npy", model_data)
 
             # Also save adjacency matrix separately for backward compatibility
             np.save(output_dir / f"{model_name}_adjacency_matrix.npy", self.adjacency_matrix)

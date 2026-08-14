@@ -1,6 +1,6 @@
 # Causal Model Configuration
 data:
-    input_file: "./data/25/database_similarity.xlsx"
+    input_file: "./data/35/database_similarity.xlsx"
     output_dir: "./causal_outputs/"
 
 preprocessing:

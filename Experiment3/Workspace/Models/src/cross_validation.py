@@ -135,8 +135,9 @@ class CrossValidationTrainer:
         """Setup cross-validation output directory."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_tag = getattr(self.args, "run_tag", "") or ""
+        checkpoint_root = getattr(self.args, "checkpoint_root", "") or "checkpoints"
         dir_name = f"cv_{run_tag}_{timestamp}" if run_tag else f"cv_{timestamp}"
-        self.cv_dir = Path(f"checkpoints/{dir_name}")
+        self.cv_dir = Path(checkpoint_root) / dir_name
         self.cv_dir.mkdir(parents=True, exist_ok=True)
 
         # Save CV configuration

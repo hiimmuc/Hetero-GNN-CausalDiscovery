@@ -109,8 +109,9 @@ def append_manifest(manifest_path: Path, record: dict) -> None:
         f.write(json.dumps(record) + "\n")
 
 
-def find_cv_dir(tag: str) -> str:
-    matches = sorted(MODELS_DIR.glob(f"checkpoints/cv_{tag}_*"))
+def find_cv_dir(tag: str, root: str = "checkpoints") -> str:
+    root_path = Path(root) if Path(root).is_absolute() else MODELS_DIR / root
+    matches = sorted(root_path.glob(f"cv_{tag}_*"))
     return str(matches[-1]) if matches else ""
 
 
