@@ -210,7 +210,7 @@ def main():
         "--grid_module",
         type=str,
         default="grid",
-        help="Module (in this dir) exposing build_grid(), e.g. full or selective",
+        help="Module (in this dir) exposing build_grid(), e.g. full (default) or selective",
     )
     parser.add_argument("--dry_run", action="store_true")
     args = parser.parse_args()
