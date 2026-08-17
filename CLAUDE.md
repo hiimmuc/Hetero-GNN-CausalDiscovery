@@ -60,8 +60,8 @@ python src/main.py evaluate --model_dir checkpoints/<run_dir>
 # Offline causal discovery (produces artifacts consumed by --causal / --ace)
 python src/run_causal_discovery.py
 
-# Aggregate/plot CV results
-python src/analyze_cv.py <cv_results_dir>
+# Aggregate/plot CV results (or re-analyze an existing CV run)
+python src/cross_validation.py --analyze checkpoints/<cv_run_dir>
 ```
 
 `--causal` and `--ace` are mutually exclusive. Both require causal artifacts from

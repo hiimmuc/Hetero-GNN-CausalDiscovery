@@ -14,7 +14,6 @@ fixed splits.
 """
 
 import optuna
-
 from grid import CV_COMMON_ARGS
 
 INTERACTIONS = ["RATING", "BFI_PERCEPTION"]

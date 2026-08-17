@@ -1,5 +1,11 @@
-# PyTorch and related packages
-torch>=1.12.0
+# PyTorch and related packages (CUDA 13.0)
+--index-url https://download.pytorch.org/whl/cu130
+torch==2.12.0
+torchvision==0.27.0
+
+# PyG (requires separate find-links for pre-built wheels)
+--find-links https://data.pyg.org/whl/torch-2.12.0+cu130.html
+pyg_lib
 torch-geometric>=2.0.0
 torch-scatter>=2.0.0
 torch-sparse>=0.6.0

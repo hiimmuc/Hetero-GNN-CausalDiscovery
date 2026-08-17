@@ -378,12 +378,16 @@ class CrossValidationTrainer:
         return aggregated
 
     def _save_cv_results(self) -> None:
-        """Save cross-validation results."""
+        """Save cross-validation results, summary CSV, markdown report, and metric plots."""
         with open(self.cv_dir / "cv_results.json", "w") as f:
             json.dump(self.cv_results, f, indent=2, default=str)
 
         # Save summary CSV
         self._save_cv_summary()
+
+        # Save report and plots
+        create_cv_report(self.cv_results, self.cv_dir)
+        plot_cv_metrics(self.cv_results, self.cv_dir)
 
     def _save_cv_summary(self) -> None:
         """Save CV summary as CSV."""
@@ -415,28 +419,165 @@ class CrossValidationTrainer:
 
     def _print_cv_results(self) -> None:
         """Print cross-validation results."""
-        print(f"\n{'='*80}")
-        print("CROSS-VALIDATION RESULTS")
-        print(f"{'='*80}")
+        print_cv_summary(self.cv_results)
 
-        print(f"Number of folds: {self.n_folds}")
-        print(f"Total CV time: {self.cv_results['cv_time']:.2f}s")
-        print(f"Best fold: {self.cv_results['best_fold'] + 1}")
-        print(f"Worst fold: {self.cv_results['worst_fold'] + 1}")
 
-        print("\nMean ± Std across folds:")
-        print("-" * 40)
-        for metric_name in self.cv_results["mean_metrics"]:
-            mean_val = self.cv_results["mean_metrics"][metric_name]
-            std_val = self.cv_results["std_metrics"][metric_name]
-            print(f"{metric_name:15s}: {mean_val:.4f} ± {std_val:.4f}")
+def load_cv_results(cv_dir: str | Path) -> dict:
+    """Load cross-validation results from a directory or JSON file."""
+    cv_path = Path(cv_dir)
+    results_file = cv_path if cv_path.is_file() else cv_path / "cv_results.json"
 
-        print("\nPer-fold results:")
-        print("-" * 40)
-        for i, fold_result in enumerate(self.fold_results):
-            print(f"Fold {i+1}:")
-            for metric_name, value in fold_result["best_metrics"].items():
-                print(f"  {metric_name:13s}: {value:.4f}")
+    if not results_file.exists():
+        raise FileNotFoundError(f"CV results not found at {results_file}")
+
+    with open(results_file, "r") as f:
+        results = json.load(f)
+
+    return results
+
+
+def plot_cv_metrics(results: dict, save_dir: Path | str) -> None:
+    """Plot cross-validation metrics across folds."""
+    try:
+        import matplotlib.pyplot as plt
+
+        save_dir = Path(save_dir)
+        fold_results = results.get("fold_results", [])
+        if not fold_results:
+            return
+
+        n_folds = len(fold_results)
+        metrics = list(fold_results[0].get("best_metrics", {}).keys())
+        if not metrics:
+            return
+
+        n_metrics = len(metrics)
+        fig, axes = plt.subplots(2, (n_metrics + 1) // 2, figsize=(15, 10))
+        axes = axes.flatten() if n_metrics > 1 else [axes]
+
+        for i, metric in enumerate(metrics):
+            values = [fold.get("best_metrics", {}).get(metric, 0.0) for fold in fold_results]
+            mean_val = float(np.mean(values))
+
+            ax = axes[i]
+            ax.bar(range(1, n_folds + 1), values, alpha=0.7)
+            ax.axhline(y=mean_val, color="r", linestyle="--", label=f"Mean: {mean_val:.4f}")
+            ax.set_xlabel("Fold")
+            ax.set_ylabel(metric)
+            ax.set_title(f"{metric} across folds")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+
+        # Remove empty subplots
+        for i in range(n_metrics, len(axes)):
+            fig.delaxes(axes[i])
+
+        plt.tight_layout()
+        plt.savefig(save_dir / "cv_metrics.png", dpi=300, bbox_inches="tight")
+        plt.close()
+
+        print("CV metrics plot saved.")
+
+    except ImportError:
+        print("matplotlib not available, skipping plots")
+
+
+def create_cv_report(results: dict, save_dir: Path | str) -> None:
+    """Create comprehensive CV report in markdown format."""
+    save_dir = Path(save_dir)
+    report = []
+
+    fold_results = results.get("fold_results", [])
+    n_folds = results.get("n_folds", len(fold_results))
+    cv_time = results.get("cv_time", 0.0)
+    best_fold = results.get("best_fold", 0) + 1
+    worst_fold = results.get("worst_fold", 0) + 1
+
+    report.append("# Cross-Validation Report\n\n")
+    report.append(f"**Number of folds:** {n_folds}\n")
+    report.append(f"**Total CV time:** {cv_time:.2f}s\n")
+    report.append(f"**Best fold:** {best_fold}\n")
+    report.append(f"**Worst fold:** {worst_fold}\n\n")
+
+    report.append("## Mean ± Std Results\n\n")
+    report.append("| Metric | Mean | Std |\n")
+    report.append("|--------|------|-----|\n")
+
+    mean_metrics = results.get("mean_metrics", {})
+    std_metrics = results.get("std_metrics", {})
+    for metric, mean_val in mean_metrics.items():
+        std_val = std_metrics.get(metric, 0.0)
+        report.append(f"| {metric} | {mean_val:.4f} | {std_val:.4f} |\n")
+
+    report.append("\n## Per-Fold Results\n\n")
+    metric_keys = list(mean_metrics.keys())
+    if metric_keys:
+        report.append("| Fold | " + " | ".join(metric_keys) + " | Training Time |\n")
+        report.append("|------|" + "|".join(["-" * 10] * (len(metric_keys) + 1)) + "|\n")
+
+        for i, fold_result in enumerate(fold_results):
+            row = f"| {i+1} |"
+            for metric in metric_keys:
+                val = fold_result.get("best_metrics", {}).get(metric, 0.0)
+                row += f" {val:.4f} |"
+            tt = fold_result.get("training_time", 0.0)
+            row += f" {tt:.2f}s |\n"
+            report.append(row)
+
+    with open(save_dir / "cv_report.md", "w") as f:
+        f.writelines(report)
+
+    print("CV report saved.")
+
+
+def print_cv_summary(results: dict) -> None:
+    """Print summary of CV results."""
+    print(f"\n{'='*80}")
+    print("CROSS-VALIDATION RESULTS")
+    print(f"{'='*80}")
+
+    fold_results = results.get("fold_results", [])
+    n_folds = results.get("n_folds", len(fold_results))
+    cv_time = results.get("cv_time", 0.0)
+    best_fold = results.get("best_fold", 0) + 1
+    worst_fold = results.get("worst_fold", 0) + 1
+
+    print(f"Number of folds: {n_folds}")
+    print(f"Total CV time: {cv_time:.2f}s")
+    print(f"Best fold: {best_fold}")
+    print(f"Worst fold: {worst_fold}")
+
+    print("\nMean ± Std across folds:")
+    print("-" * 40)
+    for metric_name, mean_val in results.get("mean_metrics", {}).items():
+        std_val = results.get("std_metrics", {}).get(metric_name, 0.0)
+        print(f"{metric_name:15s}: {mean_val:.4f} ± {std_val:.4f}")
+
+    print("\nPer-fold results:")
+    print("-" * 40)
+    for i, fold_result in enumerate(fold_results):
+        print(f"Fold {i+1}:")
+        for metric_name, value in fold_result.get("best_metrics", {}).items():
+            print(f"  {metric_name:13s}: {value:.4f}")
+
+
+def analyze_cv_results(cv_dir: str | Path) -> dict:
+    """Load and analyze CV results: generate plots, markdown report, and print summary."""
+    cv_path = Path(cv_dir)
+    target_dir = cv_path if cv_path.is_dir() else cv_path.parent
+
+    results = load_cv_results(cv_path)
+
+    print(f"\nAnalyzing cross-validation results in {target_dir}...")
+    print("Creating plots...")
+    plot_cv_metrics(results, target_dir)
+
+    print("Creating report...")
+    create_cv_report(results, target_dir)
+
+    print_cv_summary(results)
+    print(f"\nAnalysis saved to: {target_dir}")
+    return results
 
 
 class FoldTrainer(Trainer):
@@ -569,14 +710,28 @@ class FoldTrainer(Trainer):
 
 
 def main():
-    """Main cross-validation entry point (also supports plain training via --no-cv).
+    """Main cross-validation and analysis entry point.
 
-    Delegates argument parsing to ``utility.parser`` so all flags (--gnn_type,
-    --n_heads, --cv, --causal, etc.) stay in one place.  The subcommand is
-    synthesized as ``train`` so that ``parse_args`` works without a real
-    subcommand token on the command line.
+    Supports:
+      1. Training / CV: delegates to utility.parser (e.g. `python cross_validation.py --cv`)
+      2. Post-hoc analysis: `python cross_validation.py --analyze <cv_dir>`
+         or `python cross_validation.py <cv_dir>`
     """
     import sys
+
+    # Support standalone analysis flags: python cross_validation.py --analyze <cv_dir>
+    if len(sys.argv) > 1 and sys.argv[1] in ("--analyze", "-a", "--cv_dir"):
+        if len(sys.argv) > 2:
+            analyze_cv_results(sys.argv[2])
+        else:
+            print("Error: Please provide a CV directory path to analyze.")
+            sys.exit(1)
+        return
+
+    # Check if a single argument is passed pointing to an existing CV directory
+    if len(sys.argv) == 2 and (Path(sys.argv[1]) / "cv_results.json").exists():
+        analyze_cv_results(sys.argv[1])
+        return
 
     # Inject the 'train' subcommand when this module is called directly so that
     # utility.parser.parse_args() (which expects a subcommand) works unchanged.

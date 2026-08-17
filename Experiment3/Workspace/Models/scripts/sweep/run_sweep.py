@@ -2,6 +2,7 @@
 config across a worker pool, with a resumable JSONL manifest."""
 
 import argparse
+import importlib
 import json
 import os
 import subprocess
@@ -13,7 +14,6 @@ from pathlib import Path
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent))
-from grid import build_grid
 
 MODELS_DIR = Path(__file__).resolve().parents[2]
 _manifest_lock = threading.Lock()
@@ -122,10 +122,18 @@ def run_one(
     threads_per_worker: int,
     tracker: SlotTracker,
     overall_bar: tqdm,
+    ckpt_root: Path,
 ) -> None:
     tag = config["tag"]
     log_path = log_dir / f"{tag}.log"
-    cmd = ["python", "src/main.py", "train"] + config["cli_args"]
+    cmd = (
+        ["python", "src/main.py", "train"]
+        + config["cli_args"]
+        + [
+            "--checkpoint_root",
+            str(ckpt_root),
+        ]
+    )
 
     wait_for_gpu_memory()
 
@@ -147,14 +155,19 @@ def run_one(
             log_file.write(f"THREADS_PER_WORKER: {threads_per_worker}\n\n")
             log_file.flush()
             proc = subprocess.run(
-                cmd, cwd=str(MODELS_DIR), stdout=log_file, stderr=subprocess.STDOUT, env=env
+                cmd,
+                cwd=str(MODELS_DIR),
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                env=env,
+                check=False,
             )
         wall_time = time.time() - start
     finally:
         tracker.release(slot)
 
     record = {k: v for k, v in config.items() if k != "cli_args"}
-    cv_dir = find_cv_dir(tag)
+    cv_dir = find_cv_dir(tag, root=str(ckpt_root))
     record.update({"wall_time_s": wall_time, "cv_dir": cv_dir})
 
     if proc.returncode != 0 or not cv_dir:
@@ -193,9 +206,16 @@ def main():
     parser.add_argument(
         "--limit", type=int, default=None, help="Only run the first N configs (testing)"
     )
+    parser.add_argument(
+        "--grid_module",
+        type=str,
+        default="grid",
+        help="Module (in this dir) exposing build_grid(), e.g. full or selective",
+    )
     parser.add_argument("--dry_run", action="store_true")
     args = parser.parse_args()
 
+    build_grid = importlib.import_module("grid_" + args.grid_module).build_grid
     grid = build_grid()
     if args.limit:
         grid = grid[: args.limit]
@@ -211,6 +231,8 @@ def main():
     sweep_dir = MODELS_DIR / "checkpoints" / f"sweep_{sweep_id}"
     log_dir = sweep_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_root = sweep_dir / "ckpt"
+    ckpt_root.mkdir(parents=True, exist_ok=True)
     manifest_path = sweep_dir / "manifest.jsonl"
 
     completed = load_completed_tags(manifest_path)
@@ -240,7 +262,14 @@ def main():
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             futures = [
                 pool.submit(
-                    run_one, c, log_dir, manifest_path, threads_per_worker, tracker, overall_bar
+                    run_one,
+                    c,
+                    log_dir,
+                    manifest_path,
+                    threads_per_worker,
+                    tracker,
+                    overall_bar,
+                    ckpt_root,
                 )
                 for c in pending
             ]

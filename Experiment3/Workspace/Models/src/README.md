@@ -19,10 +19,8 @@ src/
 ├── main.py                 # Unified CLI entry point (train / evaluate)
 ├── train.py                # Trainer class: training loop, early stopping, checkpointing
 ├── evaluate.py             # Evaluator class: load a checkpoint and report metrics
-├── cross_validation.py     # K-fold (optionally stratified) cross-validation framework
-├── run_cv.py               # Backwards-compatible wrapper for cross_validation.main
+├── cross_validation.py     # K-fold cross-validation framework & analysis
 ├── run_causal_discovery.py # Entry point for the LiNGAM causal discovery pipeline
-├── analyze_cv.py           # Aggregate and plot cross-validation results
 ├── configs/
 │   ├── config.py           # Single source of truth for all defaults
 │   └── causal_config.yaml  # LiNGAM causal discovery configuration
@@ -173,8 +171,7 @@ python src/main.py train --cv --n_folds 5 --stratified --cv_epochs 200
 | `--cv_epochs` | `CV_CONFIG.cv_epochs` | Epochs per fold. |
 | `--adj_type` | `ADJ_TYPE` | Adjacency normalization type. |
 
-`run_cv.py` is a thin backwards-compatible wrapper; prefer `main.py train --cv`
-or running `cross_validation.py` directly.
+
 
 ### Evaluate
 
@@ -211,11 +208,12 @@ parameters, prior knowledge, and visualization/output formats.
 ### Analyze Cross-Validation Results
 
 ```bash
-python src/analyze_cv.py <cv_results_dir>
+python src/cross_validation.py --analyze checkpoints/<cv_run_dir>
 ```
 
-Loads `cv_results.json` and produces aggregate statistics and per-fold metric
-plots.
+Cross-validation runs automatically produce `cv_results.json`, `cv_summary.csv`,
+`cv_report.md`, and `cv_metrics.png`. The `--analyze` command re-loads an
+existing run's results and generates/displays the report and per-fold plots.
 
 ## Data and Outputs
 
