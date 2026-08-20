@@ -436,7 +436,7 @@ class CausalModel:
             return
 
         # Create causal graph
-        graph = self._make_causal_graph(matrix, self.probability_matrix)
+        graph = self._make_causal_graph(matrix, self.probability_matrix if use_robust else None)
 
         # Add visual styling for feature groups
         self._style_causal_graph(graph)
