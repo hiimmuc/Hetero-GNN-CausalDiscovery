@@ -40,7 +40,6 @@ digraph {
 	"MOS-X2 Q4" -> SQ4 [label="-0.230\n(86%)" fontsize=14]
 	SQ2 -> SQ4 [label="-0.132\n(82%)" fontsize=14]
 	SQ3 -> SQ4 [label="0.435\n(94%)" fontsize=14]
-	SQ5 -> SQ4 [label="0.452\n(42%)" fontsize=14]
 	"Difference BFI-TIPI N" -> SQ5 [label="0.098\n(43%)" fontsize=14]
 	"MOS-X2 Q2" -> SQ5 [label="-0.105\n(38%)" fontsize=14]
 	"MOS-X2 Q4" -> SQ5 [label="0.157\n(56%)" fontsize=14]

@@ -415,6 +415,46 @@ class CausalModel:
 
         # Apply probability threshold
         significant_mask = np.abs(self.probability_matrix) > prob_threshold
+
+        # FIXED: Enforce acyclicity against the fitted causal order. Each bootstrap
+        # resample is its own acyclic DirectLiNGAM fit, but resamples can
+        # disagree on the order of two weakly-identified variables (e.g. a
+        # near-50/50 split on two variables (e.g. SQ4 vs SQ5)); thresholding each direction
+        # independently then lets both survive into the aggregated matrix as
+        # a cycle.
+        # NOTE: this "loop" visualization does not affect SEMHead (CausalHead.py) evaluation in `causal_order_` and silently zero-fills any not-yet-computed parent, so the backward edge would be dead weight.
+        # -> drop it here instead, keeping only the direction consistent with the fitted order.
+        causal_order = (
+            getattr(self.model, "causal_order_", None) if self.model is not None else None
+        )
+        if causal_order is not None:
+            position = np.argsort(causal_order)  # position[node] = index in topological order
+            n = len(causal_order)
+            # acyclic_mask[i, j] is True only if j precedes i (j is a valid
+            # parent of i under causal_order), matching the convention that
+            # adjacency_matrix[i, j] is the coefficient of x_j in x_i's SEM
+            # equation.
+            acyclic_mask = position[np.arange(n)[:, None]] > position[np.arange(n)[None, :]]
+            dropped = significant_mask & ~acyclic_mask
+            if dropped.any():
+                for i, j in zip(*np.where(dropped)):
+                    logger.warning(
+                        "Dropping bootstrap edge %s -> %s (prob=%.2f): violates causal "
+                        "order established by the direct fit, forming a cycle with "
+                        "%s -> %s.",
+                        self.features[j],
+                        self.features[i],
+                        self.probability_matrix[i, j],
+                        self.features[i],
+                        self.features[j],
+                    )
+            significant_mask = significant_mask & acyclic_mask
+        else:
+            logger.warning(
+                "No fitted causal_order_ available; robust adjacency matrix may contain "
+                "cycles from conflicting bootstrap edge directions."
+            )
+
         self.robust_adjacency_matrix = median_effects * significant_mask
 
         logger.info("Robust causal effects calculated")
