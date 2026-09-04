@@ -50,7 +50,17 @@ normalization fully fold-local. No change to the single train/test split path
 2. **`FoldCausalArtifacts` — per-fold discovery + cache (new, in `cross_validation.py`).**
    Given a fold's training participant-ID set and the run's `--causal_config`,
    returns the path to a `*_robust_model_data.npy` fitted on those rows.
-   - Cache dir: `causal_outputs/cv_folds/<key>/`
+   - **Cache dir: `<checkpoint_root>/causal_fold_cache/<key>/`** — never under
+     `causal_outputs/`, so the offline `run_causal_discovery.py` artifacts are
+     never touched or overwritten. `--checkpoint_root` is `checkpoints/` for a
+     standalone CV run and `checkpoints/sweep_<id>/ckpt/` for a sweep, so the
+     cache is automatically scoped: shared across all trials of one sweep
+     (preserving cross-trial reuse), isolated between sweeps, and removed when the
+     sweep dir is deleted.
+   - Each `fold_N/` additionally gets a full copy of its artifact set
+     (`*_robust_model_data.npy`, `*_normalization_stats.csv`, `causal_adjacency.csv`)
+     under `fold_N/causal/`, so a fold's checkpoint is self-contained for later
+     inspection even after the cache is cleared.
    - `key = sha1(b"\n".join(sorted(str(pid) for pid in train_ids))
              + causal_config_file_bytes
              + str(n_sampling) + SET).hexdigest()[:16]`
@@ -61,7 +71,7 @@ normalization fully fold-local. No change to the single train/test split path
      artifact after acquiring (another worker may have finished). Then build:
      ```
      cm = CausalModel(causal_config_path)
-     cm.config["data"]["output_dir"] = str(cache_dir)
+     cm.config["data"]["output_dir"] = str(cache_dir)   # <checkpoint_root>/causal_fold_cache/<key>/
      cm.config["model"]["name"] = "lingam_causal_model"
      cm.config["visualization"]["save_graphs"] = False
      cm.config["model"]["bootstrap"]["n_jobs"] = cv_causal_jobs   # default 1
@@ -91,11 +101,14 @@ normalization fully fold-local. No change to the single train/test split path
    the round-trip can't be done safely.
 
 4. **Wiring into `FoldTrainer` (no change to `FoldTrainer` / `CausalMixin`).**
-   `run_fold` builds `fold_args = copy.copy(self.args)` and sets
-   `fold_args.causal_path = <cache_dir>/models/lingam_causal_model_robust_model_data.npy`,
+   After the cache build/hit, `run_fold` copies the artifact set into
+   `fold_N/causal/`, then builds `fold_args = copy.copy(self.args)` and sets
+   `fold_args.causal_path = fold_N/causal/lingam_causal_model_robust_model_data.npy`,
    then `FoldTrainer(fold_args, ...)`. `Trainer._setup_causal_paths()` reads
    `self.args.causal_path`; `CausalMixin` resolves the sibling
-   `_normalization_stats.csv` for the SEM head automatically.
+   `_normalization_stats.csv` for the SEM head automatically. Pointing at the
+   fold-local copy (not the shared cache) keeps the fold checkpoint valid even if
+   the cache is later cleared.
 
 5. **`--cv_global_causal` escape hatch.**
    When set, skip components 2–4 entirely; behavior is exactly today's (all folds
@@ -110,8 +123,10 @@ split_interactions()  ── K (train_interactions, val_interactions) by user
     │
 for each fold:
     train_ids  = { idx_to_user[int(r[0])] for r in train_interactions["RATING"] }
-    art_path   = FoldCausalArtifacts.get(train_ids, causal_config, n_sampling)   # cache or build
-    f_lookup   = read <art dir>/…_normalization_stats.csv
+    cache_path = FoldCausalArtifacts.get(train_ids, causal_config, n_sampling)
+                 # <checkpoint_root>/causal_fold_cache/<key>/  — cache hit or build
+    art_path   = copy cache artifacts → fold_N/causal/
+    f_lookup   = read fold_N/causal/…_normalization_stats.csv
     train/val interactions ── renormalize RATING/VQ/SF columns via (g_*, f_*)
     fold_args  = copy(args); fold_args.causal_path = art_path
     FoldTrainer(fold_args, …).train()
@@ -140,18 +155,24 @@ Per-fold discovery is on whenever `--cv` is combined with `--causal`/`--ace`;
 ### Outputs / bookkeeping
 
 - `cv_config.json` gains `per_fold_causal: bool` and `fold_causal_keys: [<key>, …]`.
-- Each `fold_N/` gets `causal_adjacency.csv` (copy of the fold's robust adjacency)
-  for traceability.
-- Cache dirs under `causal_outputs/cv_folds/` persist across runs (git-ignored).
+- Each `fold_N/causal/` holds the full fold artifact set (robust model data,
+  normalization stats, `causal_adjacency.csv`) — the fold checkpoint is
+  self-contained.
+- Shared cache lives at `<checkpoint_root>/causal_fold_cache/<key>/`; for a sweep
+  that is inside the sweep dir and is removed with it. `causal_outputs/` is never
+  written. Already git-ignored via the existing
+  `Experiment3/Workspace/Models/checkpoints/` rule.
 
 ## Cost
 
 Per unique `(fold train-ID set, causal_config, n_sampling)`: one full
 discovery (fit + 5000-sample bootstrap + evaluate + save; viz skipped).
-K folds ⇒ K discoveries per CV run at worst. A recommender sweep with a fixed
-causal config and fixed CV args reuses the cache across every trial ⇒ K
-discoveries total for the whole sweep. A causal-config sweep pays
-K × (unique causal configs).
+K folds ⇒ K discoveries per CV run at worst. A recommender sweep passes one fixed
+`--checkpoint_root` (`sweep_<id>/ckpt`) to every trial, so all trials share
+`sweep_<id>/ckpt/causal_fold_cache/` ⇒ with a fixed causal config and fixed CV
+args the whole sweep pays K discoveries total. A causal-config sweep pays
+K × (unique causal configs). Copying artifacts into each `fold_N/causal/` is a
+sub-second file copy, not a re-fit.
 
 ## Testing
 
@@ -166,14 +187,23 @@ K × (unique causal configs).
   global normalization and a warning is logged.
 
 **Integration**
-- 2-fold `--cv --causal` on `SET=25`: each `fold_N/causal_adjacency.csv` differs;
-  run completes; `cv_results.json` written.
+- 2-fold `--cv --causal` on `SET=25`: each `fold_N/causal/causal_adjacency.csv`
+  differs; run completes; `cv_results.json` written; `causal_outputs/` unchanged
+  (mtime assertion).
 - Concurrent: two processes racing the same cold cache key ⇒ exactly one builds,
   both return the same path, no corrupt artifact.
 
 **Regression**
 - `--cv --causal --cv_global_causal` reproduces the pre-change CV metrics on a
   fixed seed (byte-identical `cv_summary.csv` within float tolerance).
+
+## Invariants
+
+- `causal_outputs/` is read-only for the CV/sweep path. All per-fold artifacts
+  are written under `<checkpoint_root>/` only. The offline
+  `run_causal_discovery.py` output is used solely as the source of the *global*
+  normalization stats for the inversion, and only when `--causal_path` /
+  `CAUSAL_MODEL_PATH` resolves to it.
 
 ## Out of scope
 
