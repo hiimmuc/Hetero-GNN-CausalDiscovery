@@ -394,8 +394,9 @@ class CausalModel:
     def _calculate_robust_effects(self) -> np.ndarray:
         """Calculate robust causal effects using bootstrap results."""
         bootstrap_config = self.config["model"]["bootstrap"]
-        prob_threshold = bootstrap_config["prob_lower_limit"]
+        prob_threshold = bootstrap_config["replication_prob_threshold"]
         min_effect = bootstrap_config["min_causal_effect"]
+        enforce_acyclic = bootstrap_config.get("enforce_acyclic", True)
 
         # Get probability matrix
         self.probability_matrix = self.bootstrap_result.get_probabilities(
@@ -424,10 +425,18 @@ class CausalModel:
         # a cycle.
         # NOTE: this "loop" visualization does not affect SEMHead (CausalHead.py) evaluation in `causal_order_` and silently zero-fills any not-yet-computed parent, so the backward edge would be dead weight.
         # -> drop it here instead, keeping only the direction consistent with the fitted order.
+        # Controlled by bootstrap.enforce_acyclic in the config; disable only
+        # to inspect the raw, possibly-cyclic per-edge probabilities.
         causal_order = (
             getattr(self.model, "causal_order_", None) if self.model is not None else None
         )
-        if causal_order is not None:
+        if not enforce_acyclic:
+            logger.info(
+                "enforce_acyclic=false: skipping acyclicity enforcement, robust "
+                "adjacency matrix may contain cycles from conflicting bootstrap "
+                "edge directions."
+            )
+        elif causal_order is not None:
             position = np.argsort(causal_order)  # position[node] = index in topological order
             n = len(causal_order)
             # acyclic_mask[i, j] is True only if j precedes i (j is a valid
@@ -1053,7 +1062,7 @@ class CausalModel:
                 and hasattr(self, "probability_matrix")
                 and self.probability_matrix is not None
             ):
-                min_prob = self.config["model"]["bootstrap"]["prob_lower_limit"]
+                min_prob = self.config["model"]["bootstrap"]["replication_prob_threshold"]
                 print(f"Only effects with probability > {min_prob} are included")
         else:
             print(f"\nModel Type: {matrix_type} LinGAM")
