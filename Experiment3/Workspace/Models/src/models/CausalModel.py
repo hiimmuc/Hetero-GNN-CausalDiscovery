@@ -34,15 +34,23 @@ logger = logging.getLogger(__name__)
 np.set_printoptions(precision=3, suppress=True)
 
 
-def _build_lingam_model(algorithm: str, prior_knowledge: np.ndarray | None):
+def _build_lingam_model(
+    algorithm: str, prior_knowledge: np.ndarray | None, random_state: int | None = None
+):
     """Construct an (unfitted) LiNGAM estimator from an algorithm name.
 
     Defined at module level so it can be pickled and sent to joblib workers.
     """
     if algorithm == "DirectLiNGAM":
-        return lingam.DirectLiNGAM(prior_knowledge=prior_knowledge)
+        return lingam.DirectLiNGAM(
+            prior_knowledge=prior_knowledge,
+            random_state=random_state,
+            apply_prior_knowledge_softly=False,
+            measure="pwling",
+            # adaptive_lasso=True, # This arg only exists in latest lingam version
+        )
     if algorithm == "ICALiNGAM":
-        return lingam.ICALiNGAM()
+        return lingam.ICALiNGAM(random_state=random_state, max_iter=1000)
     raise ValueError(f"Unsupported algorithm: {algorithm}")
 
 
@@ -59,7 +67,9 @@ def _bootstrap_chunk(
     this chunk so the parent can concatenate them into a single result.
     """
     np.random.seed(seed)
-    model = _build_lingam_model(algorithm, prior_knowledge)
+    model = _build_lingam_model(
+        algorithm=algorithm, prior_knowledge=prior_knowledge, random_state=seed
+    )
     result = model.bootstrap(data, n_sampling=n_sampling)
     return np.asarray(result.adjacency_matrices_), np.asarray(result.total_effects_)
 
@@ -93,7 +103,14 @@ class CausalModel:
         self.adjacency_matrix = None
         self.bootstrap_result = None
         self.probability_matrix = None
+        self.evaluation_results = None
         self._prior_knowledge = None
+
+        # Optional row filter: when set to a collection of "Participant ID"
+        # values, load_data() keeps only those participants' rows before fitting.
+        # Used by the per-fold CV causal-discovery precompute so each fold's DAG
+        # is learned from that fold's training participants only.
+        self.participant_ids: set | None = None
 
         # Set random seed for reproducibility
         np.random.seed(self.config["model"]["random_seed"])
@@ -136,6 +153,24 @@ class CausalModel:
         data_path = self.config["data"]["input_file"]
         df = pd.read_excel(data_path)
         logger.info(f"Data loaded from {data_path}, shape: {df.shape}")
+
+        # Optional per-fold row filter (set by the CV precompute).
+        if self.participant_ids is not None:
+            if "Participant ID" not in df.columns:
+                raise KeyError(
+                    "participant_ids filter set but the input file has no "
+                    "'Participant ID' column"
+                )
+            wanted = set(self.participant_ids)
+            df = df[df["Participant ID"].isin(wanted)].copy()
+            missing = wanted - set(df["Participant ID"].unique())
+            logger.info(
+                f"Filtered to {len(wanted) - len(missing)} participants "
+                f"({df.shape[0]} rows)"
+                + (f"; {len(missing)} requested IDs absent from file" if missing else "")
+            )
+            if df.empty:
+                raise ValueError("participant_ids filter left no rows")
 
         # Recompute BFI-TIPI difference inputs from a common scale (see method)
         preprocessing = self.config.get("preprocessing", {})
@@ -595,6 +630,7 @@ class CausalModel:
             robust_fit = evaluate_model_fit(self.robust_adjacency_matrix, self.data)
 
         evaluation = {"direct_model_fit": direct_fit, "robust_model_fit": robust_fit}
+        self.evaluation_results = evaluation
 
         # Save evaluation results
         if self.config["evaluation"]["save_effects"]:
@@ -603,6 +639,31 @@ class CausalModel:
 
         logger.info("Model evaluation completed")
         return evaluation
+
+    def print_model_fit(self) -> None:
+        """Print the model-fit statistics from :meth:`evaluate_model`.
+
+        Shows the direct-fit measures and, when a bootstrap robust adjacency
+        matrix is available, the robust-fit measures alongside them. Call
+        :meth:`evaluate_model` first (``run_complete_analysis`` already does).
+        """
+        evaluation = getattr(self, "evaluation_results", None)
+        if not evaluation:
+            logger.warning("No evaluation results available. Call evaluate_model() first.")
+            return
+
+        print("\n" + "=" * 80)
+        print("=== LiNGAM Model Fit ===")
+        for label, key in (("Direct", "direct_model_fit"), ("Robust", "robust_model_fit")):
+            fit = evaluation.get(key)
+            print(f"\n{label} model fit:")
+            if fit is None:
+                print("  (not available)")
+            elif isinstance(fit, pd.DataFrame):
+                print(fit.to_string(index=False))
+            else:
+                print(f"  {fit}")
+        print("=" * 80)
 
     def save_model(self) -> None:
         """Save trained model and adjacency matrices."""
@@ -905,6 +966,9 @@ class CausalModel:
 
         if hasattr(self, "robust_adjacency_matrix") and self.robust_adjacency_matrix is not None:
             self.print_system_of_equations(use_robust=True)
+
+        # Print model-fit statistics (chi2, CFI, RMSEA, AIC/BIC, ...)
+        self.print_model_fit()
 
     def get_normalization_stats(self) -> pd.DataFrame | None:
         """

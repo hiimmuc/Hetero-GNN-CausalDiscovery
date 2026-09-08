@@ -143,10 +143,14 @@ def create_adjacency_matrix(
     n_nodes = n_users + n_items
     adj_mat = sp.dok_matrix((n_nodes, n_nodes), dtype=np.float32)
 
-    # Create bipartite graph structure
+    # Create bipartite graph structure. Cast the index columns explicitly: when
+    # the interaction rows carry float values (e.g. fold-local re-normalized
+    # targets) the whole row is float64, and scipy rejects float indices even
+    # when integral-valued.
     for user_id, item_id, rating in interactions:
-        adj_mat[user_id, n_users + item_id] = rating
-        adj_mat[n_users + item_id, user_id] = rating
+        u, it = int(user_id), int(item_id)
+        adj_mat[u, n_users + it] = rating
+        adj_mat[n_users + it, u] = rating
 
     adj_mat = adj_mat.tolil()
 

@@ -89,6 +89,37 @@ def wait_for_gpu_memory(min_free_mib: int = MIN_FREE_MIB, poll_interval: int = 1
         waited += poll_interval
 
 
+def run_fold_causal_precompute(n_folds: str = "5", stratified: bool = True) -> None:
+    """Fit the per-fold CV causal artifacts once, up front. Every sweep trial
+    then reads the cached fold artifacts instead of racing to build them."""
+    cmd = [
+        "python",
+        "src/run_causal_discovery.py",
+        "--cv",
+        "--n_folds",
+        str(n_folds),
+        "--stratified" if stratified else "--no-stratified",
+    ]
+    print(f"Precomputing per-fold causal artifacts: {' '.join(cmd)}")
+    rc = subprocess.run(cmd, cwd=str(MODELS_DIR), check=False).returncode
+    if rc != 0:
+        raise SystemExit(
+            f"Per-fold causal precompute failed (exit {rc}). "
+            f"Re-run it manually or pass --skip_causal_precompute."
+        )
+
+
+def precompute_fold_causal(grid: list) -> None:
+    """Precompute iff any grid config uses --causal / --ace, reading n_folds /
+    --stratified from the first such config."""
+    causal_cfgs = [c for c in grid if {"--causal", "--ace"} & set(c["cli_args"])]
+    if not causal_cfgs:
+        return
+    a = causal_cfgs[0]["cli_args"]
+    n_folds = a[a.index("--n_folds") + 1] if "--n_folds" in a else "5"
+    run_fold_causal_precompute(n_folds, "--stratified" in a)
+
+
 def load_completed_tags(manifest_path: Path) -> set:
     if not manifest_path.exists():
         return set()
@@ -213,6 +244,11 @@ def main():
         help="Module (in this dir) exposing build_grid(), e.g. full (default) or selective",
     )
     parser.add_argument("--dry_run", action="store_true")
+    parser.add_argument(
+        "--skip_causal_precompute",
+        action="store_true",
+        help="Don't run the up-front per-fold causal discovery (folds build lazily)",
+    )
     args = parser.parse_args()
 
     build_grid = importlib.import_module("grid_" + args.grid_module).build_grid
@@ -226,6 +262,9 @@ def main():
             print(" ", config["tag"], "->", " ".join(config["cli_args"]))
         print("  ...")
         return
+
+    if not args.skip_causal_precompute:
+        precompute_fold_causal(grid)
 
     sweep_id = args.sweep_id or time.strftime("%Y%m%d_%H%M%S")
     sweep_dir = MODELS_DIR / "checkpoints" / f"sweep_{sweep_id}"

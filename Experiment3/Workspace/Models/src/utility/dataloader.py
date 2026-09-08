@@ -312,9 +312,12 @@ class eHMIDataset(Dataset):
                     interaction_row = [user_idx, item_idx] + values
                     interactions_list.append(interaction_row)
 
-            # Convert to numpy array for this interaction type
+            # Convert to numpy array for this interaction type. Force float dtype:
+            # user/item indices are integral but the value columns hold z-scored /
+            # MinMax-scaled targets, and an int array would truncate them to 0 on
+            # the `interactions_array[:, 2:] = normalized_values` assignment below.
             interactions_array = (
-                np.array(interactions_list)
+                np.array(interactions_list, dtype=float)
                 if interactions_list
                 else np.empty((0, len(columns) + 2))
             )

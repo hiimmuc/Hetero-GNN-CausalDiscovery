@@ -18,7 +18,14 @@ import optuna
 from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).parent))
-from run_sweep import SlotTracker, _tick_worker_bars, find_cv_dir, wait_for_gpu_memory
+from grid import CV_COMMON_ARGS
+from run_sweep import (
+    SlotTracker,
+    _tick_worker_bars,
+    find_cv_dir,
+    run_fold_causal_precompute,
+    wait_for_gpu_memory,
+)
 from search_space import suggest_params
 
 MODELS_DIR = Path(__file__).resolve().parents[2]
@@ -147,11 +154,24 @@ def main() -> None:
     parser.add_argument(
         "--dry_run", action="store_true", help="Print sampled configs, run nothing"
     )
+    parser.add_argument(
+        "--skip_causal_precompute",
+        action="store_true",
+        help="Don't run the up-front per-fold causal discovery (folds build lazily)",
+    )
     args = parser.parse_args()
 
     if args.dry_run:
         dry_run(min(args.n_trials, 5))
         return
+
+    if not args.skip_causal_precompute:
+        n_folds = (
+            CV_COMMON_ARGS[CV_COMMON_ARGS.index("--n_folds") + 1]
+            if "--n_folds" in CV_COMMON_ARGS
+            else "5"
+        )
+        run_fold_causal_precompute(n_folds, "--stratified" in CV_COMMON_ARGS)
 
     study_name = args.study_name or time.strftime("%Y%m%d_%H%M%S")
     sweep_dir = MODELS_DIR / "checkpoints" / f"optuna_{study_name}"

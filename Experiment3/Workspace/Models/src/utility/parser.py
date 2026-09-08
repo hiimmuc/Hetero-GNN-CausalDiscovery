@@ -21,6 +21,7 @@ from configs.config import (
     BPR_LAMBDA,
     CAUSAL_CONFIG_PATH,
     CAUSAL_MODEL_PATH,
+    CV_CAUSAL_JOBS,
     CV_CONFIG,
     EARLY_STOP_PATIENCE,
     FREEZE_SEM,
@@ -217,9 +218,13 @@ def add_cv_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--stratified",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=CV_CONFIG["stratified"],
-        help="Use stratified CV (groups users by interaction count)",
+        help=(
+            "Stratify CV folds by participant activity tercile "
+            "(--no-stratified for plain KFold). Must match the flag passed to "
+            "run_causal_discovery.py --cv or the per-fold artifacts won't match."
+        ),
     )
     parser.add_argument(
         "--cv_epochs", type=int, default=CV_CONFIG["cv_epochs"], help="Number of epochs per fold"
@@ -243,6 +248,25 @@ def add_cv_arguments(parser: argparse.ArgumentParser) -> None:
             "Optional tag prepended to the CV output directory name "
             "(checkpoints/cv_{run_tag}_{timestamp}/) so parallel sweep runs "
             "don't collide on second-resolution timestamps."
+        ),
+    )
+    parser.add_argument(
+        "--cv_global_causal",
+        action="store_true",
+        help=(
+            "Disable per-fold causal discovery in CV: every fold's SEM head uses "
+            "the single global --causal_path artifact (pre-2026-09 behaviour, "
+            "leaks held-out participants into the DAG). Default is per-fold."
+        ),
+    )
+    parser.add_argument(
+        "--cv_causal_jobs",
+        type=int,
+        default=CV_CAUSAL_JOBS,
+        help=(
+            "joblib workers for a per-fold bootstrap that a CV run has to build "
+            "in place (missing from the precompute cache). Default 1 to stay "
+            "safe under an already-parallel sweep."
         ),
     )
     parser.add_argument(

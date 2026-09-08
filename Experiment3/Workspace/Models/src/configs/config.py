@@ -171,3 +171,15 @@ CV_CONFIG = {
     "cv_epochs": 200,  # 100 → 200; early stopping terminates early anyway
     "random_state": RANDOM_SEED,
 }
+
+# Per-fold causal discovery in CV (see
+# docs/superpowers/specs/2026-09-04-per-fold-causal-discovery-cv-design.md).
+# `run_causal_discovery.py --cv` fits DirectLiNGAM + bootstrap once per fold on
+# that fold's training participants and caches the K artifact sets here; CV /
+# sweep runs with --causal/--ace then load the artifact matching the current
+# fold instead of the single global one. `--cv_global_causal` restores the old
+# shared-artifact behaviour.
+CV_CAUSAL_CACHE_DIR = "checkpoints/causal_fold_cache"  # relative to Models/
+CV_CAUSAL_JOBS = 1  # joblib workers for the per-fold bootstrap (1 = safe under a sweep)
+CV_CAUSAL_LOCK_TIMEOUT = 1800  # seconds before a fold build lock is treated as stale
+CV_CAUSAL_MIN_FOLD_ROWS = 100  # warn if a fold's filtered training set is smaller

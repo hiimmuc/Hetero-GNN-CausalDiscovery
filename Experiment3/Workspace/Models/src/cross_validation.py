@@ -2,14 +2,18 @@
 Cross-validation framework for GHCF models.
 """
 
+import copy
 import json
+import shutil
 import time
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 from configs.config import (
+    CAUSAL_CONFIG_PATH,
     CAUSAL_MODEL_PATH,
+    CV_CAUSAL_JOBS,
     DATA_DIR,
     DATABASE_PATH,
     EVAL_INTERVAL,
@@ -19,6 +23,17 @@ from configs.config import (
 )
 from sklearn.model_selection import KFold, StratifiedKFold
 from train import Trainer
+from utility.cv_causal import (
+    NORM_STATS_CSV,
+    ROBUST_NPY,
+    assert_split_matches,
+    causal_fold_key,
+    ensure_fold_artifact,
+    norm_lookup_from_csv,
+    read_folds_manifest,
+    refold_normalize_interactions,
+    write_folds_manifest,
+)
 from utility.dataloader import eHMIDataset, load_processed_data
 from utility.helper import load_interaction_norm_stats, set_seed
 
@@ -46,6 +61,48 @@ class CrossValidationSplitter:
         else:
             self.splitter = KFold(n_splits=n_folds, shuffle=True, random_state=random_state)
 
+    @staticmethod
+    def _units_and_activity(unit_occurrences: list) -> tuple[np.ndarray, np.ndarray]:
+        """Given a sequence of (repeated) unit ids, return the unique-unit array
+        (``list(set(...))`` order) and the per-unit occurrence count aligned to it."""
+        units = np.array(list(set(int(u) for u in unit_occurrences)))
+        counts: dict[int, int] = {}
+        for u in unit_occurrences:
+            counts[int(u)] = counts.get(int(u), 0) + 1
+        activity = np.array([counts.get(int(u), 0) for u in units])
+        return units, activity
+
+    def _fold_index_splits(
+        self, units: np.ndarray, activity: np.ndarray | None
+    ) -> list[tuple[np.ndarray, np.ndarray]]:
+        """The single KFold / StratifiedKFold call shared by ``split_interactions``
+        and ``split_participant_ids`` so the fold boundaries are defined once."""
+        if self.stratified and activity is not None:
+            activity_labels = np.digitize(activity, np.percentile(activity, [33, 67]))
+            return list(self.splitter.split(units, activity_labels))
+        return list(self.splitter.split(units))
+
+    def split_participant_ids(self, df) -> list[set]:
+        """K sets of *training* ``Participant ID`` values, one per fold.
+
+        Mirrors ``split_interactions``' user split exactly (same first-appearance
+        ``user_to_idx``, same RATING-row activity counts, same
+        ``_fold_index_splits``) but expressed as participant IDs, for the
+        per-fold causal-discovery precompute which works from the raw dataframe.
+        """
+        unique_users = list(df["Participant ID"].unique())  # dataloader's order
+        user_to_idx = {u: i for i, u in enumerate(unique_users)}
+        idx_to_user = {i: u for u, i in user_to_idx.items()}
+
+        rated = df.loc[df["Rating score"].notna(), "Participant ID"]
+        occurrences = [user_to_idx[p] for p in rated]
+        units, activity = self._units_and_activity(occurrences)
+
+        folds = []
+        for train_idx, _ in self._fold_index_splits(units, activity):
+            folds.append({idx_to_user[int(units[i])] for i in train_idx})
+        return folds
+
     def split_interactions(self, interactions: dict[str, list]) -> list[tuple[dict, dict]]:
         """
         Split interactions data into train/validation folds.
@@ -64,25 +121,13 @@ class CrossValidationSplitter:
         primary_data = interactions[primary_interaction]
 
         # Create user-based splits
-        users = list(set([int(interaction[0]) for interaction in primary_data]))
-        users = np.array(users)
+        users, activity_values = self._units_and_activity(
+            [interaction[0] for interaction in primary_data]
+        )
 
-        # For stratified splitting, create user activity levels
-        if self.stratified:
-            user_activity = {}
-            for interaction in primary_data:
-                user_id = int(interaction[0])
-                user_activity[user_id] = user_activity.get(user_id, 0) + 1
-
-            # Create activity level labels (low, medium, high)
-            activity_values = np.array([user_activity.get(u, 0) for u in users])
-            activity_labels = np.digitize(
-                activity_values, np.percentile(activity_values, [33, 67])
-            )
-
-            splits = list(self.splitter.split(users, activity_labels))
-        else:
-            splits = list(self.splitter.split(users))
+        splits = self._fold_index_splits(
+            users, activity_values if self.stratified else None
+        )
 
         fold_data = []
         for train_idx, val_idx in splits:
@@ -126,6 +171,21 @@ class CrossValidationTrainer:
         self.stratified = stratified
         self.splitter = CrossValidationSplitter(n_folds, stratified)
 
+        # Per-fold causal discovery: on for --causal / --ace CV runs unless the
+        # --cv_global_causal escape hatch is set. When on, each fold's SEM head
+        # is built from a DAG fitted on that fold's training participants only.
+        uses_causal = getattr(args, "causal", False) or getattr(args, "ace", False)
+        self._per_fold_causal = uses_causal and not getattr(args, "cv_global_causal", False)
+        self._causal_config_path = getattr(args, "causal_config", None) or CAUSAL_CONFIG_PATH
+        self._causal_fold_key = (
+            causal_fold_key(n_folds, stratified, self._causal_config_path)
+            if self._per_fold_causal
+            else None
+        )
+        self._fold_causal_paths: list = []
+        self._fold_norm_lookups: list = []
+        self._global_norm_lookup: dict = {}
+
         # Results storage
         self.fold_results = []
         self.cv_results = {}
@@ -146,6 +206,8 @@ class CrossValidationTrainer:
             "stratified": self.stratified,
             "args": vars(self.args),
             "timestamp": timestamp,
+            "per_fold_causal": self._per_fold_causal,
+            "causal_fold_key": self._causal_fold_key,
         }
 
         with open(self.cv_dir / "cv_config.json", "w") as f:
@@ -170,6 +232,8 @@ class CrossValidationTrainer:
             print(f"Creating new dataset for interactions: {self.args.interactions}")
             return self._create_new_dataset(data_path, processed_data_dir)
 
+        if "idx_to_user" not in metadata and "user_to_idx" in metadata:
+            metadata["idx_to_user"] = {i: u for u, i in metadata["user_to_idx"].items()}
         return train_data, test_data, metadata
 
     def _create_new_dataset(
@@ -199,6 +263,8 @@ class CrossValidationTrainer:
             "n_users": dataset.n_users,
             "n_items": dataset.n_items,
             "interaction_types": dataset.interaction_types,
+            "user_to_idx": dataset.user_to_idx,
+            "idx_to_user": dataset.idx_to_user,
         }
 
         return all_data, test_data, metadata
@@ -233,11 +299,11 @@ class CrossValidationTrainer:
 
         adj_matrices: dict = {}
         for interaction_type, interaction_list in interactions.items():
-            if not interaction_list:
+            if len(interaction_list) == 0:
                 adj_matrices[interaction_type] = []
                 continue
 
-            arr = np.array(interaction_list)  # [n_rows, 2 + n_components]
+            arr = np.asarray(interaction_list)  # [n_rows, 2 + n_components]
             n_components = arr.shape[1] - 2
             matrices = []
             for comp_idx in range(n_components):
@@ -272,6 +338,31 @@ class CrossValidationTrainer:
         fold_dir = self.cv_dir / f"fold_{fold_idx + 1}"
         fold_dir.mkdir(exist_ok=True)
 
+        fold_args = self.args
+        if self._per_fold_causal:
+            # Re-express the globally z-scored RATING/VQ/SF targets in this
+            # fold's z-space so they match the fold's SEM head output space.
+            f_lookup = self._fold_norm_lookups[fold_idx]
+            train_data = refold_normalize_interactions(
+                train_data, self._global_norm_lookup, f_lookup
+            )
+            val_data = refold_normalize_interactions(
+                val_data, self._global_norm_lookup, f_lookup
+            )
+
+            # Copy this fold's causal artifact set into the checkpoint so the
+            # fold dir is self-contained, and point the trainer at that copy.
+            fold_causal_dir = fold_dir / "causal"
+            fold_causal_dir.mkdir(exist_ok=True)
+            src_models = self._fold_causal_paths[fold_idx].parent
+            for name in (ROBUST_NPY, NORM_STATS_CSV):
+                src = src_models / name
+                if src.exists():
+                    shutil.copy2(src, fold_causal_dir / name)
+            fold_args = copy.copy(self.args)
+            fold_args.causal_path = str(fold_causal_dir / ROBUST_NPY)
+            print(f"  [per-fold causal] fold {fold_idx + 1} SEM head <- {fold_args.causal_path}")
+
         # Prepare data for this fold.
         # Rebuild adjacency matrices from this fold's training interactions only
         # so that validation edges are not visible to the GNN during training.
@@ -301,13 +392,95 @@ class CrossValidationTrainer:
 
         # Create trainer for this fold
         fold_trainer = FoldTrainer(
-            self.args, fold_train_data, fold_val_data, metadata, fold_dir, fold_idx
+            fold_args, fold_train_data, fold_val_data, metadata, fold_dir, fold_idx
         )
 
         # Run training
         fold_results = fold_trainer.train()
 
         return fold_results
+
+    def _fold_train_participant_ids(self, fold_data: list, metadata: dict) -> list[set]:
+        """Each fold's training ``Participant ID`` set, derived from the split
+        just produced (RATING rows → user idx → ``idx_to_user``)."""
+        idx_to_user = metadata.get("idx_to_user")
+        if not idx_to_user:
+            raise RuntimeError(
+                "Per-fold causal discovery needs metadata['idx_to_user']; "
+                "the dataset/cache did not provide a user_to_idx mapping."
+            )
+        out = []
+        for train_interactions, _ in fold_data:
+            rating_rows = train_interactions.get("RATING")
+            if not rating_rows:
+                raise RuntimeError(
+                    "Per-fold causal discovery requires the RATING interaction "
+                    "in the fold split; none found."
+                )
+            out.append({idx_to_user[int(r[0])] for r in rating_rows})
+        return out
+
+    def _prepare_per_fold_causal(self, fold_data: list, metadata: dict) -> None:
+        """Resolve one causal artifact per fold (build any that are missing) and
+        load the fold + global normalization lookups used by ``run_fold``."""
+        key = self._causal_fold_key
+        train_ids_by_fold = self._fold_train_participant_ids(fold_data, metadata)
+
+        manifest = read_folds_manifest(key)
+        if manifest is not None:
+            assert_split_matches(manifest, train_ids_by_fold)
+        else:
+            strat_flag = "--stratified" if self.stratified else "--no-stratified"
+            print(
+                f"[per-fold causal] no precomputed manifest for key {key}; "
+                f"building folds on demand. To precompute up front:\n"
+                f"    python src/run_causal_discovery.py --cv --n_folds {self.n_folds} "
+                f"{strat_flag} --causal_config {self._causal_config_path}"
+            )
+
+        n_jobs = getattr(self.args, "cv_causal_jobs", CV_CAUSAL_JOBS)
+        self._fold_causal_paths = []
+        self._fold_norm_lookups = []
+        for i, train_ids in enumerate(train_ids_by_fold):
+            npy = ensure_fold_artifact(
+                i, train_ids, key, self._causal_config_path, n_jobs
+            )
+            self._fold_causal_paths.append(npy)
+            self._fold_norm_lookups.append(norm_lookup_from_csv(npy.parent / NORM_STATS_CSV))
+
+        if manifest is None:
+            records = [
+                {
+                    "idx": i,
+                    "n_train_participants": len(ids),
+                    "train_participant_ids": sorted(str(p) for p in ids),
+                    "artifact_path": str(self._fold_causal_paths[i]),
+                    "causal_order": None,
+                    "n_edges": None,
+                }
+                for i, ids in enumerate(train_ids_by_fold)
+            ]
+            write_folds_manifest(
+                key, self.n_folds, self.stratified, records, self._causal_config_path
+            )
+
+        # Global interaction-target stats (for the fold-local renorm inversion).
+        g_df = load_interaction_norm_stats(
+            getattr(self.args, "causal_path", CAUSAL_MODEL_PATH)
+        )
+        self._global_norm_lookup = (
+            {
+                str(r["feature"]): (float(r["mean"]), float(r["std"]))
+                for _, r in g_df.iterrows()
+            }
+            if g_df is not None
+            else {}
+        )
+        if not self._global_norm_lookup:
+            print(
+                "[per-fold causal] WARNING: no global normalization stats; "
+                "interaction targets stay on their as-loaded normalization."
+            )
 
     def run(self) -> dict:
         """Run complete cross-validation."""
@@ -323,6 +496,11 @@ class CrossValidationTrainer:
         # Create CV splits
         print(f"Creating {self.n_folds}-fold cross-validation splits...")
         fold_data = self.splitter.split_interactions(all_data["interactions"])
+
+        # Per-fold causal discovery: resolve (or build) one DAG per fold, fitted
+        # on that fold's training participants, before any training starts.
+        if self._per_fold_causal:
+            self._prepare_per_fold_causal(fold_data, metadata)
 
         print(f"Running {self.n_folds}-fold cross-validation...")
         cv_start_time = time.time()
