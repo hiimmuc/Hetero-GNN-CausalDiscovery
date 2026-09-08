@@ -1,6 +1,6 @@
 # Per-fold causal discovery in cross-validation
 
-**Date:** 2026-09-04
+**Date:** 2026-09-04 (rev. 2026-09-08 — explicit precompute step)
 **Status:** approved design, pending implementation plan
 **Scope:** `Experiment3/Workspace/Models/` — cross-validation path only
 
@@ -21,20 +21,25 @@ are all fold-local (the GNN message-passing graph is already rebuilt per fold vi
 
 ## Goal
 
-In CV, fit causal discovery separately per fold on that fold's **training**
-participants only, and make both the SEM head and the interaction-target
-normalization fully fold-local. No change to the single train/test split path
-(`train.py`) or to the standalone offline pipeline (`run_causal_discovery.py`).
+Split the dataset into K folds **first**, run DirectLiNGAM + bootstrap once per
+fold on that fold's **training** participants (→ K artifact sets
+`A_train_fold_1 … A_train_fold_K`, separate files), then have every CV / sweep
+training run consume the artifact matching the fold it is currently on. Both the
+SEM head and the interaction-target normalization become fully fold-local. The
+K discoveries are a one-time precompute; the sweep afterwards does no causal
+fitting at all.
 
 ## Decisions (locked)
 
 | Question | Decision |
 |---|---|
+| Structure | **Explicit precompute:** `run_causal_discovery.py --cv` fits all K folds up front and writes K artifact sets; CV/sweep runs only read them. |
 | Normalization coupling | Fully fold-local: SEM head **and** interaction targets re-normalized with fold-train stats. |
-| Run paths affected | CV only. |
-| Bootstrap cost per fold | Keep `n_sampling: 5000` (same as offline). |
-| Default vs opt-in | Default **on** for any `--cv` run with `--causal`/`--ace`; `--cv_global_causal` opts out. |
-| Cache lock | Atomic `O_CREAT | O_EXCL` lockfile with stale-lock timeout. No new dependency. |
+| Run paths affected | CV only. `train.py` single-split unchanged. |
+| Bootstrap cost | `n_sampling: 5000` per fold, same as offline. Exactly K fits, once. |
+| Default vs opt-in | Per-fold artifacts are used automatically by any `--cv` run with `--causal`/`--ace`; `--cv_global_causal` opts out. |
+| Missing artifacts | CV run auto-builds the missing fold (atomic `O_CREAT|O_EXCL` lockfile, no dep) and logs the recommended precompute command. `run_sweep.py` / `run_optuna.py` run the precompute once before fanning out, so the fallback rarely triggers. |
+| Fold-split source of truth | One shared function (`CrossValidationSplitter.split_participant_ids(df)`) called by both the precompute entrypoint and `cross_validation.py`. |
 
 ## Architecture
 
@@ -47,181 +52,247 @@ normalization fully fold-local. No change to the single train/test split path
    Everything downstream (rescale, z-score, fit, bootstrap, save) is unchanged.
    This is the only change to `CausalModel`.
 
-2. **`FoldCausalArtifacts` — per-fold discovery + cache (new, in `cross_validation.py`).**
-   Given a fold's training participant-ID set and the run's `--causal_config`,
-   returns the path to a `*_robust_model_data.npy` fitted on those rows.
-   - **Cache dir: `<checkpoint_root>/causal_fold_cache/<key>/`** — never under
-     `causal_outputs/`, so the offline `run_causal_discovery.py` artifacts are
-     never touched or overwritten. `--checkpoint_root` is `checkpoints/` for a
-     standalone CV run and `checkpoints/sweep_<id>/ckpt/` for a sweep, so the
-     cache is automatically scoped: shared across all trials of one sweep
-     (preserving cross-trial reuse), isolated between sweeps, and removed when the
-     sweep dir is deleted.
-   - Each `fold_N/` additionally gets a full copy of its artifact set
-     (`*_robust_model_data.npy`, `*_normalization_stats.csv`, `causal_adjacency.csv`)
-     under `fold_N/causal/`, so a fold's checkpoint is self-contained for later
-     inspection even after the cache is cleared.
-   - `key = sha1(b"\n".join(sorted(str(pid) for pid in train_ids))
-             + causal_config_file_bytes
-             + str(n_sampling) + SET).hexdigest()[:16]`
-   - Hit: `<key>/models/lingam_causal_model_robust_model_data.npy` exists →
-     return it.
-   - Miss: acquire `<key>/.lock` (atomic create; if held and younger than
-     `CV_CAUSAL_LOCK_TIMEOUT` seconds, poll; if stale, steal). Re-check for the
-     artifact after acquiring (another worker may have finished). Then build:
-     ```
-     cm = CausalModel(causal_config_path)
-     cm.config["data"]["output_dir"] = str(cache_dir)   # <checkpoint_root>/causal_fold_cache/<key>/
-     cm.config["model"]["name"] = "lingam_causal_model"
-     cm.config["visualization"]["save_graphs"] = False
-     cm.config["model"]["bootstrap"]["n_jobs"] = cv_causal_jobs   # default 1
-     cm._setup_directories()
-     cm.participant_ids = train_ids
-     cm.run_complete_analysis()
-     ```
-     Release lock.
-   - `n_jobs` defaults to 1 in CV to avoid nested joblib oversubscription when
-     several sweep workers each run a CV; overridable via `--cv_causal_jobs`.
+2. **Shared fold split (new, in `cross_validation.py`).**
+   Extract the KFold/StratifiedKFold call out of `split_interactions` into a
+   private helper `_fold_index_splits(users_array, activity_values | None)` →
+   `list[(train_idx, val_idx)]` (seed `RANDOM_SEED`, `np.digitize` on activity
+   terciles when stratified). `split_interactions` keeps its exact current
+   behavior by delegating to it.
+   New public `CrossValidationSplitter.split_participant_ids(df)`:
+   - builds `user_to_idx` from `df["Participant ID"].unique()` (same
+     first-appearance order the dataloader uses), `users = list(set(indices))`,
+     activity = per-user `RATING`-row count — **identical construction to
+     `split_interactions`**;
+   - calls the same `_fold_index_splits` helper;
+   - returns `list[set[participant_id]]` (K **training**-ID sets) by mapping
+     indices back through `idx_to_user`.
+   A unit test asserts `split_participant_ids(df)` and `split_interactions` agree
+   fold-for-fold. This keeps the fold boundaries **identical to
+   `sweep_20260904_173056`** (no re-partitioning), so per-fold results stay
+   comparable to that sweep.
 
-3. **Fold-local interaction normalization (new, in `cross_validation.py`).**
-   The CV dataset is still built once with the **global** stats (current
-   behavior) — this gives a known, invertible affine transform. `run()` keeps the
-   loaded global stats lookup `{col: (g_mean, g_std)}` on `self`.
-   In `run_fold`, before constructing `fold_train_data` / `fold_val_data`, for
-   each interaction type in `{RATING, VOICE_QUALITY, SUBJECTIVE_FEELING}` and each
-   of its component columns:
+3. **`run_causal_discovery.py --cv` — the precompute entrypoint (new mode).**
+   New flags: `--cv`, `--n_folds` (default `CV_CONFIG["n_folds"]`), `--stratified`
+   / `--no-stratified`, `--causal_jobs` (default `CV_CAUSAL_JOBS`).
+   Steps:
+   1. Read `DATABASE_PATH` (`database.xlsx`); `split_participant_ids(df)` → K
+      training-ID sets.
+   2. Compute `key` (below). Target dir `causal_fold_cache/<key>/`.
+   3. For each fold `i` (skip if `fold_i/models/…_robust_model_data.npy` already
+      exists):
+      ```
+      cm = CausalModel(causal_config_path)
+      cm.config["data"]["output_dir"]              = "<cache>/<key>/fold_i/"
+      cm.config["model"]["name"]                   = "lingam_causal_model"
+      cm.config["visualization"]["save_graphs"]    = False
+      cm.config["model"]["bootstrap"]["n_jobs"]    = causal_jobs
+      cm._setup_directories()
+      cm.participant_ids = train_ids_i     # component 1 seam
+      cm.run_complete_analysis()
+      ```
+      Warn if a fold's filtered row count < `CV_CAUSAL_MIN_FOLD_ROWS`.
+   4. Write `<cache>/<key>/folds_manifest.json`:
+      `{key, set, n_folds, stratified, seed, n_sampling, causal_config_sha,
+        folds: [{idx, n_train_participants, train_participant_ids, artifact_path,
+                 causal_order, n_edges}]}`.
+   The standalone `run_causal_discovery.py` (no `--cv`) is byte-for-byte
+   unchanged — it still writes the global artifact to `causal_outputs/`.
+
+   **Cache key & location.** Location `checkpoints/causal_fold_cache/<key>/`
+   (fixed path, *not* `causal_outputs/`, *not* per-sweep — so one precompute
+   serves every later CV run and every sweep).
+   `key = sha1(SET + "|" + str(n_folds) + "|" + str(stratified) + "|"
+              + str(RANDOM_SEED) + "|" + causal_config_file_bytes).hexdigest()[:16]`.
+   `causal_config_file_bytes` already covers `n_sampling`, prior knowledge,
+   feature lists, thresholds, etc. `folds_manifest.json` records the actual
+   per-fold ID lists; the CV run asserts its own split matches them.
+
+4. **Sweep launchers run the precompute once (`run_sweep.py`, `run_optuna.py`).**
+   Before spawning workers: if the grid/search space contains any `--causal` /
+   `--ace` config, invoke the precompute for `(n_folds, stratified)` taken from
+   `CV_COMMON_ARGS` unless `--skip_causal_precompute` is passed. One serial
+   K-fold discovery up front; the 8 workers then never touch causal fitting and
+   never contend on a lock.
+
+5. **CV-run consumption (`cross_validation.py`).**
+   `CrossValidationTrainer.run()`:
+   - `load_data()` adds `idx_to_user` to `metadata` (from `dataset.idx_to_user`,
+     or inverted from the cached `user_to_idx`).
+   - After `split_interactions`, derive each fold's training participant IDs
+     directly from the split it just produced:
+     `train_ids_i = { idx_to_user[int(r[0])] for r in train_interactions_i["RATING"] }`.
+   - Compute `key`; `cache = checkpoints/causal_fold_cache/<key>/`.
+   - If `cache/folds_manifest.json` exists, assert `train_ids_i` equals the
+     manifest's `folds[i].train_participant_ids` (guards against a drifted
+     splitter or a stale cache). Mismatch → hard error naming both sets.
+   - Per fold `i`, resolve `art_i = cache/fold_i/models/lingam_causal_model_robust_model_data.npy`.
+     If missing → build that one fold in place (`CausalModel(participant_ids=train_ids_i)`)
+     under `cache/fold_i/.lock` (atomic `O_CREAT|O_EXCL`, stale-steal after
+     `CV_CAUSAL_LOCK_TIMEOUT`), then log the full
+     `run_causal_discovery.py --cv --n_folds K …` command that would precompute
+     all folds at once.
+   - Copy `fold_i` artifact set into `<cv_dir>/fold_{i+1}/causal/` (self-contained
+     checkpoint) and set `fold_args.causal_path` to that copy.
+
+6. **Fold-local interaction normalization (`cross_validation.py`).**
+   The CV dataset is still built once with the **global** stats — an invertible
+   affine transform. `run()` keeps `self._global_norm_lookup = {col: (g_mean, g_std)}`.
+   In `run_fold`, before building `fold_train_data` / `fold_val_data`, for each
+   interaction type in `{RATING, VOICE_QUALITY, SUBJECTIVE_FEELING}` and each
+   component column:
    ```
    x_fold = (x_global * g_std + g_mean - f_mean) / f_std
    ```
-   applied to columns `2:` of both the train and val interaction arrays. `f_*`
-   from the fold artifact's sibling `lingam_causal_model_normalization_stats.csv`.
-   `BFI_PERCEPTION` (fixed-scale MinMax, data-independent) is left untouched.
-   Guard: if any column is absent from the global lookup **or** the fold lookup,
-   skip that interaction type (leave on global normalization) and log a warning —
-   the round-trip can't be done safely.
+   on columns `2:` of both the train and val arrays. `f_*` from
+   `fold_{i+1}/causal/lingam_causal_model_normalization_stats.csv`.
+   `BFI_PERCEPTION` (fixed-scale MinMax) is untouched. Guard: any column absent
+   from the global **or** fold lookup ⇒ that interaction type stays on global
+   normalization + warning.
 
-4. **Wiring into `FoldTrainer` (no change to `FoldTrainer` / `CausalMixin`).**
-   After the cache build/hit, `run_fold` copies the artifact set into
-   `fold_N/causal/`, then builds `fold_args = copy.copy(self.args)` and sets
-   `fold_args.causal_path = fold_N/causal/lingam_causal_model_robust_model_data.npy`,
-   then `FoldTrainer(fold_args, ...)`. `Trainer._setup_causal_paths()` reads
-   `self.args.causal_path`; `CausalMixin` resolves the sibling
-   `_normalization_stats.csv` for the SEM head automatically. Pointing at the
-   fold-local copy (not the shared cache) keeps the fold checkpoint valid even if
-   the cache is later cleared.
+7. **Wiring into `FoldTrainer` (no change to `FoldTrainer` / `CausalMixin`).**
+   `fold_args = copy.copy(self.args)`;
+   `fold_args.causal_path = <cv_dir>/fold_{i+1}/causal/lingam_causal_model_robust_model_data.npy`;
+   `FoldTrainer(fold_args, …)`. `Trainer._setup_causal_paths()` reads it;
+   `CausalMixin` resolves the sibling `_normalization_stats.csv` automatically.
 
-5. **`--cv_global_causal` escape hatch.**
-   When set, skip components 2–4 entirely; behavior is exactly today's (all folds
-   share `args.causal_path`). Used for A/B comparison and regression testing.
+8. **`--cv_global_causal` escape hatch.**
+   When set, skip components 5–7; all folds share `args.causal_path` (today's
+   behavior). For A/B comparison and regression testing.
 
-### Data flow (one CV run, per-fold causal ON)
+### Data flow
 
+**Precompute (once):**
 ```
-load_data()  ── builds dataset once, global stats, keeps self._global_norm_lookup
+database.xlsx ── split_participant_ids(df) ── [ids_1, …, ids_K]
     │
-split_interactions()  ── K (train_interactions, val_interactions) by user
+for i in 1..K:
+    CausalModel(participant_ids=ids_i).run_complete_analysis()
+        → checkpoints/causal_fold_cache/<key>/fold_i/{models/…_robust_model_data.npy,
+                                                      …_normalization_stats.csv}
     │
-for each fold:
-    train_ids  = { idx_to_user[int(r[0])] for r in train_interactions["RATING"] }
-    cache_path = FoldCausalArtifacts.get(train_ids, causal_config, n_sampling)
-                 # <checkpoint_root>/causal_fold_cache/<key>/  — cache hit or build
-    art_path   = copy cache artifacts → fold_N/causal/
-    f_lookup   = read fold_N/causal/…_normalization_stats.csv
-    train/val interactions ── renormalize RATING/VQ/SF columns via (g_*, f_*)
-    fold_args  = copy(args); fold_args.causal_path = art_path
-    FoldTrainer(fold_args, …).train()
+    → checkpoints/causal_fold_cache/<key>/folds_manifest.json
 ```
 
-### Metadata addition
-
-`CrossValidationTrainer.load_data()` adds `idx_to_user` to `metadata` (from
-`dataset.idx_to_user`, or inverted from `user_to_idx` on the cached-load path).
+**Each CV run / sweep trial:**
+```
+load_data() ── dataset built once, global stats → self._global_norm_lookup
+split_interactions() ── K (train, val) by user;  key → cache dir; assert manifest split matches
+for each fold i:
+    art_i    = cache/fold_i/…_robust_model_data.npy      (build-in-place only if missing)
+    copy     → cv_dir/fold_{i+1}/causal/
+    f_lookup = read cv_dir/fold_{i+1}/causal/…_normalization_stats.csv
+    train/val interactions ── renormalize RATING/VQ/SF via (g_*, f_*)
+    fold_args = copy(args); fold_args.causal_path = cv_dir/fold_{i+1}/causal/…_robust_model_data.npy
+    FoldTrainer(fold_args, …).train()   ── SEM head built from fold i's DAG
+```
 
 ### New config / CLI
 
 `configs/config.py`:
-- `CV_CAUSAL_JOBS = 1`
+- `CV_CAUSAL_JOBS = 1` — joblib workers for the per-fold bootstrap
 - `CV_CAUSAL_LOCK_TIMEOUT = 1800` (seconds; stale-lock steal threshold)
 - `CV_CAUSAL_MIN_FOLD_ROWS = 100` (warn below this)
+- `CV_CAUSAL_CACHE_DIR = "checkpoints/causal_fold_cache"` (relative to Models/)
 
-Per-fold discovery is on whenever `--cv` is combined with `--causal`/`--ace`;
-`--cv_global_causal` (`store_true`, default off) is the only switch.
+`run_causal_discovery.py` argparse:
+- `--cv` — precompute mode
+- `--n_folds` (int, default `CV_CONFIG["n_folds"]`)
+- `--stratified` / `--no-stratified` (default `CV_CONFIG["stratified"]`)
+- `--causal_jobs` (int, default `CV_CAUSAL_JOBS`)
 
 `utility/parser.py` (`add_cv_arguments`):
-- `--cv_global_causal` (`store_true`) — force single shared causal artifact
-- `--cv_causal_jobs` (`int`, default `CV_CAUSAL_JOBS`) — joblib workers for
-  per-fold bootstrap
+- `--cv_global_causal` (`store_true`, default off) — force the single shared
+  `--causal_path` artifact for all folds
+- `--cv_causal_jobs` (int, default `CV_CAUSAL_JOBS`) — passed through when a CV
+  run has to build a missing fold in place
+
+`scripts/sweep/run_sweep.py`, `run_optuna.py`:
+- `--skip_causal_precompute` (`store_true`) — don't run the up-front precompute
 
 ### Outputs / bookkeeping
 
-- `cv_config.json` gains `per_fold_causal: bool` and `fold_causal_keys: [<key>, …]`.
-- Each `fold_N/causal/` holds the full fold artifact set (robust model data,
-  normalization stats, `causal_adjacency.csv`) — the fold checkpoint is
-  self-contained.
-- Shared cache lives at `<checkpoint_root>/causal_fold_cache/<key>/`; for a sweep
-  that is inside the sweep dir and is removed with it. `causal_outputs/` is never
-  written. Already git-ignored via the existing
-  `Experiment3/Workspace/Models/checkpoints/` rule.
+- `checkpoints/causal_fold_cache/<key>/fold_i/` — the K artifact sets (robust
+  model data + normalization stats; `save_graphs` off).
+- `checkpoints/causal_fold_cache/<key>/folds_manifest.json` — key, split
+  params, and per-fold `{train_participant_ids, artifact_path, causal_order,
+  n_edges}`.
+- Each CV run copies its folds' artifact sets into `<cv_dir>/fold_{i}/causal/`
+  (self-contained checkpoint) and records `per_fold_causal: true` + the resolved
+  `causal_fold_key` in `cv_config.json`.
+- `causal_outputs/` is never written by any of this. `checkpoints/` is already
+  git-ignored (`Experiment3/Workspace/Models/checkpoints/`).
 
 ## Cost
 
-Per unique `(fold train-ID set, causal_config, n_sampling)`: one full
-discovery (fit + 5000-sample bootstrap + evaluate + save; viz skipped).
-K folds ⇒ K discoveries per CV run at worst. A recommender sweep passes one fixed
-`--checkpoint_root` (`sweep_<id>/ckpt`) to every trial, so all trials share
-`sweep_<id>/ckpt/causal_fold_cache/` ⇒ with a fixed causal config and fixed CV
-args the whole sweep pays K discoveries total. A causal-config sweep pays
-K × (unique causal configs). Copying artifacts into each `fold_N/causal/` is a
-sub-second file copy, not a re-fit.
+The precompute is **exactly K DirectLiNGAM + 5000-sample bootstrap fits**, run
+once, serially (`CV_CAUSAL_JOBS=1` by default to stay friendly under an
+already-parallel sweep; raise `--causal_jobs` for a standalone precompute). At
+K=5 that is ~5× the current single offline discovery — tens of minutes, one time.
+Every subsequent CV run and every one of the sweep's 99 trials then does **zero**
+causal fitting: it reads `fold_i/…_robust_model_data.npy` and copies it
+(sub-second). Re-running the precompute is a no-op once `fold_i/` exists (per-fold
+skip). A different `causal_config` / `n_folds` / `n_sampling` / seed / SET yields
+a new `<key>` and its own K fits.
 
 ## Testing
 
 **Unit**
-- Cache key: stable across dict ordering of `train_ids`; changes when config
-  bytes / `n_sampling` / SET change.
-- Normalization round-trip: `g→raw→fold→` inverse recovers raw within 1e-9;
-  `f_* == g_*` ⇒ identity.
-- Fold-ID extraction: IDs derived from `train_interactions` equal the splitter's
-  `train_users` mapped through `idx_to_user`.
-- Guard path: a stats CSV missing a column ⇒ that interaction type is left on
-  global normalization and a warning is logged.
+- `split_participant_ids(df)`: deterministic across calls/processes; the K
+  training sets are disjoint in their *validation* complements and cover all
+  participants; matches `split_interactions`' user split mapped through
+  `idx_to_user`.
+- Cache key: unchanged for the same split params; changes on any of SET,
+  n_folds, stratified, seed, n_sampling, causal_config bytes.
+- Normalization round-trip: `g → raw → fold` recovers raw within 1e-9;
+  `f_* == g_*` ⇒ identity transform.
+- Manifest guard: a `folds_manifest.json` whose `train_participant_ids` disagree
+  with a freshly computed split ⇒ hard error.
+- Column guard: a fold stats CSV missing a column ⇒ that interaction type stays
+  on global normalization + warning.
 
 **Integration**
-- 2-fold `--cv --causal` on `SET=25`: each `fold_N/causal/causal_adjacency.csv`
-  differs; run completes; `cv_results.json` written; `causal_outputs/` unchanged
-  (mtime assertion).
-- Concurrent: two processes racing the same cold cache key ⇒ exactly one builds,
-  both return the same path, no corrupt artifact.
+- `run_causal_discovery.py --cv --n_folds 2` on `SET=25`: writes
+  `causal_fold_cache/<key>/fold_{1,2}/…` + manifest; the two robust adjacency
+  matrices differ; `causal_outputs/` mtime unchanged.
+- 2-fold `--cv --causal` on `SET=25` after that precompute: each fold's SEM head
+  loads its own `fold_i` artifact (assert `causal_path` per fold); run completes;
+  `cv_config.json` has `per_fold_causal: true`.
+- Missing-fold fallback: delete `fold_2/`, run CV, assert it rebuilds exactly
+  that fold under a lock and finishes.
 
 **Regression**
 - `--cv --causal --cv_global_causal` reproduces the pre-change CV metrics on a
-  fixed seed (byte-identical `cv_summary.csv` within float tolerance).
+  fixed seed (`cv_summary.csv` within float tolerance).
 
 ## Invariants
 
-- `causal_outputs/` is read-only for the CV/sweep path. All per-fold artifacts
-  are written under `<checkpoint_root>/` only. The offline
-  `run_causal_discovery.py` output is used solely as the source of the *global*
-  normalization stats for the inversion, and only when `--causal_path` /
-  `CAUSAL_MODEL_PATH` resolves to it.
+- `causal_outputs/` is read-only for the CV/sweep path. Per-fold artifacts live
+  only under `checkpoints/causal_fold_cache/` and `<cv_dir>/fold_*/causal/`. The
+  offline global artifact is used solely as the source of the *global*
+  normalization stats for the inversion (component 6).
+- The fold split is computed by one function; the precompute and the CV run must
+  produce identical folds or the CV run aborts.
+- `run_causal_discovery.py` without `--cv` is behaviourally unchanged.
 
 ## Out of scope
 
 - `train.py` single-split path.
-- Per-fold re-discovery of user/item **features** (already fold-independent by
-  design — features come from questionnaire data, not interactions).
+- Per-fold re-discovery of user/item **features** (fold-independent by design —
+  they come from questionnaire data, not interactions).
 - Changing `n_sampling` or the bootstrap/robustness logic.
-- Any change to `run_causal_discovery.py` or the offline artifact layout.
+- The offline global artifact layout under `causal_outputs/`.
 
 ## Risks
 
-- **Nested parallelism under sweeps.** Mitigated by `--cv_causal_jobs` default 1
-  and the cache (discovery runs at most K times per sweep).
-- **Stale lock after a crash.** Mitigated by the `CV_CAUSAL_LOCK_TIMEOUT` steal.
-- **Tiny fold train sets.** ~24 users × ~34 items ≈ 800 rows for 5-fold; LiNGAM on
-  15 vars is fine. Add a warning if a fold's row count drops below a threshold
-  (e.g. 100).
-- **Global artifact dependency.** The inversion needs the global stats CSV, i.e.
-  the offline `run_causal_discovery.py` must have been run once. This is already a
-  documented prerequisite of the pipeline; the guard degrades to global
-  normalization if stats are missing.
+- **Splitter drift.** If `split_interactions` and `split_participant_ids` diverge,
+  folds mismatch. Mitigated by making the latter the single implementation and by
+  the manifest assertion in the CV run.
+- **Precompute skipped, sweep cold.** Falls back to per-fold build-in-place under
+  a lock — correct but serialises the first trial's folds across workers.
+  `run_sweep.py` runs the precompute up front to avoid this.
+- **Stale lock after a crash.** `CV_CAUSAL_LOCK_TIMEOUT` steal.
+- **Tiny fold train sets.** ~24 participants for 5-fold ⇒ ~800 rows; LiNGAM on 15
+  vars is fine. Warn below `CV_CAUSAL_MIN_FOLD_ROWS`.
+- **Global stats dependency for the inversion.** Needs the offline global
+  `_normalization_stats.csv`. Already a pipeline prerequisite; the column guard
+  degrades to global normalization per-interaction-type if absent.
