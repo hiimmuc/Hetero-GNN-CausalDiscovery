@@ -1,7 +1,8 @@
 # Per-fold causal discovery in cross-validation
 
 **Date:** 2026-09-04 (rev. 2026-09-08 — explicit precompute step)
-**Status:** approved design, pending implementation plan
+**Status:** implemented in `8fda238` (commit also fixes a pre-existing int64
+truncation of normalized interaction targets in the dataloader)
 **Scope:** `Experiment3/Workspace/Models/` — cross-validation path only
 
 ## Problem
