@@ -40,14 +40,14 @@ features:
 model:
     name: "lingam_causal_model"
     algorithm: "DirectLiNGAM" # Options: DirectLiNGAM, ICALiNGAM
-    random_seed: 123
+    random_seed: 42
     normalize_data: true
 
     # Bootstrap parameters
     bootstrap:
         n_sampling: 5000
-        min_causal_effect: 0.1
-        replication_prob_threshold: 0.3
+        min_causal_effect: 0.09 # keep results with causal effect magnitude above this threshold
+        replication_prob_threshold: 0.5
         n_jobs: -1 # Parallel workers for bootstrap (-1 = all cores, 1 = serial)
         # Drop bootstrap edges that run backward relative to the fitted
         # causal_order_ (parents must precede children). Without this, two
@@ -56,7 +56,7 @@ model:
         # replication_prob_threshold independently and survive into the
         # robust adjacency matrix as a cycle. Disable only to inspect the raw,
         # possibly-cyclic per-edge probabilities.
-        enforce_acyclic: true
+        enforce_acyclic: false
 
     # Prior knowledge configuration
     prior_knowledge:

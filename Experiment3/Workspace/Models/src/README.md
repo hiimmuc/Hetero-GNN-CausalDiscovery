@@ -113,7 +113,7 @@ python src/main.py train
 # Train on a subset of interaction types
 python src/main.py train --interactions RATING BFI_PERCEPTION
 
-# Override hyperparameters (these win over config.py)
+# Override hyper parameters (these win over config.py)
 python src/main.py train --embed_size 128 --lr 0.0001 --epoch 500
 
 # Use the causal SEM head for non-BFI predictions
@@ -170,8 +170,6 @@ python src/main.py train --cv --n_folds 5 --stratified --cv_epochs 200
 | `--stratified` | `CV_CONFIG.stratified` | Stratify users by interaction count. |
 | `--cv_epochs` | `CV_CONFIG.cv_epochs` | Epochs per fold. |
 | `--adj_type` | `ADJ_TYPE` | Adjacency normalization type. |
-
-
 
 ### Evaluate
 

@@ -1,8 +1,4 @@
 direct_model_fit,robust_model_fit
-"       DoF  DoF Baseline       chi2  ...         AIC         BIC    LogLik
-Value   59           110  60.929969  ...  121.880412  422.401611  0.059794
-
-[1 rows x 14 columns]","       DoF  DoF Baseline        chi2  ...        AIC         BIC    LogLik
-Value   75           110  245.050599  ...  89.519037  311.215004  0.240481
-
-[1 rows x 14 columns]"
+"       DoF  DoF Baseline       chi2  chi2 p-value  chi2 Baseline       CFI       GFI      AGFI       NFI       TLI     RMSEA         AIC         BIC    LogLik
+Value   59           110  60.929969       0.40632    7273.246738  0.999731  0.991623  0.984381  0.991623  0.999498  0.005669  121.880412  422.401611  0.059794","       DoF  DoF Baseline        chi2  chi2 p-value  chi2 Baseline      CFI       GFI      AGFI       NFI       TLI     RMSEA        AIC         BIC    LogLik
+Value   77           110  262.672354           0.0    7273.246738  0.97408  0.963885  0.948407  0.963885  0.962971  0.048669  85.484451  297.327263  0.257775"
