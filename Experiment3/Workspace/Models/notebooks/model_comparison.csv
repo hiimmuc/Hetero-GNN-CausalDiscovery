@@ -1,0 +1,79 @@
+tag,label,desc,split,metric,k,value,std
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,precision,3,0.4238095238095238,0.08024904545882246
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,precision,5,0.4047619047619048,0.05520524474738837
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,precision,10,0.4014285714285714,0.031138633760517752
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,recall,3,0.12779989828635147,0.061202519727102014
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,recall,5,0.19337217179828017,0.08206962400197827
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,recall,10,0.33224186062979166,0.08381376078428328
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,ndcg,3,0.6998952427418107,0.11723720521875716
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,ndcg,5,0.737784523422196,0.10657355148122716
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,ndcg,10,0.7314882287897689,0.07994406280845395
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,hit,3,0.8428571428571429,0.10605265453009566
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,hit,5,0.9380952380952381,0.0761904761904762
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,hit,10,0.9714285714285715,0.05714285714285716
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,cv,auc,,0.612685862352486,0.06243954061730714
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,precision,3,0.22222222222222218,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,precision,5,0.1733333333333334,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,precision,10,0.17333333333333334,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,recall,3,0.2111111111111111,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,recall,5,0.2677777777777778,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,recall,10,0.5327777777777778,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,ndcg,3,0.38620718881105476,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,ndcg,5,0.40980066153196193,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,ndcg,10,0.4793406365105434,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,hit,3,0.6,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,hit,5,0.6666666666666666,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,hit,10,0.9,
+single_none_mse_norm_gcn,GHCF-R,RATING-only baseline,single,auc,,0.6028684202271158,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,precision,3,0.42539682539682533,0.04217565160503625
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,precision,5,0.42000000000000004,0.04389226141639205
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,precision,10,0.41047619047619044,0.023211538298959902
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,recall,3,0.1272353147217679,0.060960249157723266
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,recall,5,0.19030315141891496,0.07401295980192707
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,recall,10,0.3471582780930072,0.07583923960918297
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,ndcg,3,0.6215956026037899,0.1026104502943488
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,ndcg,5,0.6797692037130529,0.08791556168823121
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,ndcg,10,0.6923625507122996,0.05931856924901659
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,hit,3,0.819047619047619,0.053452248382484864
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,hit,5,0.9380952380952381,0.0761904761904762
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,hit,10,1.0,0.0
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,cv,auc,,0.6050226866717445,0.0700652136543359
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,precision,3,0.15555555555555553,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,precision,5,0.16666666666666669,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,precision,10,0.1633333333333333,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,recall,3,0.1472222222222222,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,recall,5,0.26944444444444454,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,recall,10,0.5249999999999999,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,ndcg,3,0.3297596420238124,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,ndcg,5,0.42771307672859465,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,ndcg,10,0.4872708576032745,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,hit,3,0.43333333333333335,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,hit,5,0.6666666666666666,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,hit,10,0.8666666666666667,
+default_none_mse_norm_gcn,GHCF-A,all-relations baseline,single,auc,,0.5750514461384026,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,precision,3,0.5158730158730158,0.05019488349473619
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,precision,5,0.5057142857142857,0.09006926032409059
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,precision,10,0.48904761904761906,0.1017934416448563
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,recall,3,0.12846839698595844,0.055960767218648046
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,recall,5,0.19161462251497924,0.07109620801798307
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,recall,10,0.32799932822964234,0.07030472880888772
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,ndcg,3,0.7690328972147775,0.02904074768033001
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,ndcg,5,0.7589510717950846,0.023720140338010915
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,ndcg,10,0.7794167631995634,0.03761944071350032
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,hit,3,0.9380952380952381,0.0761904761904762
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,hit,5,0.9380952380952381,0.0761904761904762
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,hit,10,1.0,0.0
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,cv,auc,,0.6039858307921115,0.06400794244638423
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,precision,3,0.16666666666666663,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,precision,5,0.16666666666666669,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,precision,10,0.17666666666666667,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,recall,3,0.1561111111111111,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,recall,5,0.24722222222222223,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,recall,10,0.5444444444444444,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,ndcg,3,0.2905715139301034,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,ndcg,5,0.35302553449172186,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,ndcg,10,0.476708368573059,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,hit,3,0.43333333333333335,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,hit,5,0.5666666666666667,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,hit,10,0.9333333333333333,
+default_causal_fs0_mse_norm_gcn,GHCF-CE,all-relations + causal SEM head,single,auc,,0.5691757011104838,
