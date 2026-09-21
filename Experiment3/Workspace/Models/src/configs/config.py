@@ -71,7 +71,7 @@ INTERACTION_TYPES = {
 }
 
 # Graph model settings
-# Dataset is small (30 users × 50 items = 900 rows) so keep the model compact
+# Dataset is small (~30 users × 50 items = 900 rows) so keep the model compact -> avoid overfitting. The original GHCF-CE paper used 64-dim embeddings and two GNN layers, but that is too expressive for our small dataset.
 # to avoid overfitting: single GNN layer, 32-dim embeddings, strong dropout.
 GRAPH_CONFIG = {
     "embedding_dim": 32,  # 64 → 32; 80 nodes × 32 dims is already expressive
@@ -162,7 +162,7 @@ ACE_FIXED_WEIGHTS = {
 # 'pre' matches the reference GHCF: symmetric D^-1/2 A D^-1/2 with NO self-loop
 # (self-info comes from the layer self-transform + layer-0 term). Other options:
 # 'norm' (symmetric with self-loop), 'mean' (row-normalized), 'plain' (raw values).
-ADJ_TYPE = "pre"
+ADJ_TYPE = "norm"
 
 # Cross-validation settings
 CV_CONFIG = {
