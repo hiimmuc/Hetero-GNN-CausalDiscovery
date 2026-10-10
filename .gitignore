@@ -202,6 +202,7 @@ __marimo__/
 .github/
 .claude/
 .vscode/
+.codegraph/
 
 Archive/
 archive/
